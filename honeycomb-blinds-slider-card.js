@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.4.4
+ * @version 1.4.5
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -241,7 +241,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const topS = this._getSliderPos('top');
     const botS = this._getSliderPos('bottom');
     this._dragging = Math.abs(pct - topS) <= Math.abs(pct - botS) ? 'top' : 'bottom';
-    if (this._dragging === 'top') this._pendingTop = pct; else this._pendingBottom = pct;
+    // Clamp so top stays left of (or equal to) bottom in slider space
+    if (this._dragging === 'top') this._pendingTop = Math.min(pct, botS);
+    else this._pendingBottom = Math.max(pct, topS);
     this._updateSlider();
     document.addEventListener('mousemove', this._onMove);
     document.addEventListener('mouseup', this._onEnd);
@@ -253,7 +255,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (!this._dragging) return;
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
-    if (this._dragging === 'top') this._pendingTop = pct; else this._pendingBottom = pct;
+    const otherPos = this._dragging === 'top' ? this._getSliderPos('bottom') : this._getSliderPos('top');
+    if (this._dragging === 'top') this._pendingTop = Math.min(pct, otherPos);
+    else this._pendingBottom = Math.max(pct, otherPos);
     this._updateSlider();
   }
 
@@ -373,7 +377,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.4`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.5`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
