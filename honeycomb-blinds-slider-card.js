@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.2.0
+ * @version 1.2.1
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -145,16 +145,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
-        .fill-top {
+        .fill {
           position: absolute; top: 0; bottom: 0;
-          border-radius: 12px 0 0 12px;
-          background: var(--tile-color); opacity: 0.35;
-          pointer-events: none;
-        }
-        .fill-bot {
-          position: absolute; top: 0; bottom: 0;
-          border-radius: 0 12px 12px 0;
-          background: var(--primary-color, #03a9f4); opacity: 0.35;
+          background: var(--tile-color); opacity: 0.4;
           pointer-events: none;
         }
         .cur {
@@ -191,10 +184,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
             </div>
             <div>
               <div class="slider" id="slider">
-                <div class="fill-bot" id="fillBot"></div>
-                <div class="fill-top" id="fillTop"></div>
-                <div class="cur" id="curBot"></div>
+                <div class="fill" id="fill"></div>
                 <div class="cur" id="curTop"></div>
+                <div class="cur" id="curBot"></div>
               </div>
               <div class="slider-labels">
                 <div class="slider-label"><span class="dot dot-top"></span>Top <span id="lblTop"></span></div>
@@ -210,7 +202,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     this._els = {
       iconWrap: $('iconWrap'), icon: $('icon'), name: $('name'), state: $('state'),
       openBtn: $('openBtn'), stopBtn: $('stopBtn'), closeBtn: $('closeBtn'),
-      slider: $('slider'), fillBot: $('fillBot'), fillTop: $('fillTop'),
+      slider: $('slider'), fill: $('fill'),
       curBot: $('curBot'), curTop: $('curTop'), lblBot: $('lblBot'), lblTop: $('lblTop'),
     };
 
@@ -285,9 +277,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
 
   _onEnd() {
     if (this._dragging === 'top' && this._pendingTop != null) {
+      // Keep the target position sticky until HA state catches up
+      this._targetTop = this._pendingTop;
       this._call(this._config.entity_top, 'set_cover_position', { position: Math.round(this._toHA('top', this._pendingTop)) });
     }
     if (this._dragging === 'bottom' && this._pendingBottom != null) {
+      this._targetBot = this._pendingBottom;
       this._call(this._config.entity_bottom, 'set_cover_position', { position: Math.round(this._toHA('bottom', this._pendingBottom)) });
     }
     this._pendingTop = null;
@@ -300,39 +295,57 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   }
 
   _updateSlider() {
-    // Slider positions (physical: left=top of window, right=bottom of window)
-    const topSlider = this._pendingTop != null ? this._pendingTop : this._toSlider('top', this._haPos(this._config.entity_top));
-    const botSlider = this._pendingBottom != null ? this._pendingBottom : this._toSlider('bottom', this._haPos(this._config.entity_bottom));
+    const cfg = this._config;
+    const haTop = this._haPos(cfg.entity_top);
+    const haBot = this._haPos(cfg.entity_bottom);
+
+    // Slider positions: use pending (during drag), target (after release, sticky), or HA state
+    let topSlider, botSlider;
+    if (this._pendingTop != null) {
+      topSlider = this._pendingTop;
+    } else if (this._targetTop != null) {
+      // Sticky: keep target until HA catches up (within 2% tolerance)
+      const haSlider = this._toSlider('top', haTop);
+      if (Math.abs(haSlider - this._targetTop) < 2) this._targetTop = null;
+      topSlider = this._targetTop != null ? this._targetTop : haSlider;
+    } else {
+      topSlider = this._toSlider('top', haTop);
+    }
+
+    if (this._pendingBottom != null) {
+      botSlider = this._pendingBottom;
+    } else if (this._targetBot != null) {
+      const haSlider = this._toSlider('bottom', haBot);
+      if (Math.abs(haSlider - this._targetBot) < 2) this._targetBot = null;
+      botSlider = this._targetBot != null ? this._targetBot : haSlider;
+    } else {
+      botSlider = this._toSlider('bottom', haBot);
+    }
 
     // HA positions for display
-    const topHA = this._pendingTop != null ? this._toHA('top', this._pendingTop) : this._haPos(this._config.entity_top);
-    const botHA = this._pendingBottom != null ? this._toHA('bottom', this._pendingBottom) : this._haPos(this._config.entity_bottom);
+    const topHA = this._pendingTop != null ? this._toHA('top', this._pendingTop) : haTop;
+    const botHA = this._pendingBottom != null ? this._toHA('bottom', this._pendingBottom) : haBot;
 
     const e = this._els;
     if (!e) return;
 
-    // Position cursors on slider
+    // Position cursors
     e.curTop.style.left = `calc(${topSlider}% - 5px)`;
     e.curBot.style.left = `calc(${botSlider}% - 5px)`;
 
-    // Fills: top fill from left edge to top cursor, bottom fill from bottom cursor to right edge
-    // The area BETWEEN the cursors is the open area (unfilled)
+    // Fill BETWEEN the two cursors = the fabric/curtain
     const leftPos = Math.min(topSlider, botSlider);
     const rightPos = Math.max(topSlider, botSlider);
-    e.fillTop.style.width = `${leftPos}%`;
-    e.fillTop.style.left = '0';
-    e.fillTop.style.right = 'auto';
-    e.fillBot.style.width = `${100 - rightPos}%`;
-    e.fillBot.style.left = 'auto';
-    e.fillBot.style.right = '0';
+    e.fill.style.left = `${leftPos}%`;
+    e.fill.style.width = `${rightPos - leftPos}%`;
 
     // Labels show HA percentage
     e.lblTop.textContent = `${Math.round(topHA)}%`;
     e.lblBot.textContent = `${Math.round(botHA)}%`;
 
-    if (this._config.show_state !== false) {
-      const unavail = this._state(this._config.entity_top) === 'unavailable' ||
-                      this._state(this._config.entity_bottom) === 'unavailable';
+    if (cfg.show_state !== false) {
+      const unavail = this._state(cfg.entity_top) === 'unavailable' ||
+                      this._state(cfg.entity_bottom) === 'unavailable';
       e.state.textContent = unavail ? 'Unavailable' : `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
     }
   }
@@ -366,7 +379,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.1`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
