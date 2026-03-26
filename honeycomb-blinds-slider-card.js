@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.2.3
+ * @version 1.3.0
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -13,6 +13,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     this._dragging = null;
     this._pendingTop = null;
     this._pendingBottom = null;
+    this._targetTop = null;
+    this._targetBot = null;
     this._onMove = this._onMove.bind(this);
     this._onEnd = this._onEnd.bind(this);
   }
@@ -53,7 +55,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
 
   getCardSize() { return 2; }
 
-  // Get HA cover position (0=closed, 100=open)
+  // HA position: 0=closed, 100=open
   _haPos(eid) {
     const s = this._hass?.states[eid];
     if (!s) return 0;
@@ -61,22 +63,14 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     return p != null ? p : (s.state === 'open' ? 100 : 0);
   }
 
-  // Convert HA position to slider position (physical window position)
-  // Slider: left = top of window, right = bottom of window
-  // Top motor:    HA 0% (closed, rail at top) → slider 0% (left)
-  //              HA 100% (open, retracted up) → slider 0% (left) — stays at top
-  // Actually top motor moves DOWN when opening: HA 100% → rail moves down → slider right
-  // Bottom motor: HA 0% (closed, rail at bottom) → slider 100% (right)
-  //              HA 100% (open, rail at top) → slider 0% (left)
+  // Slider: left=top of window, right=bottom of window
+  // Top motor: HA 0% (rail at top) → slider 0% (left). HA 100% → slider right.
+  // Bottom motor: INVERTED. HA 0% (rail at bottom) → slider 100% (right). HA 100% → slider 0% (left).
   _toSlider(which, haPos) {
-    if (which === 'bottom') return 100 - haPos; // invert: HA 0% → right, HA 100% → left
-    return haPos; // top: HA 0% → left, HA 100% → right
+    return which === 'bottom' ? 100 - haPos : haPos;
   }
-
-  // Convert slider position back to HA position for service call
   _toHA(which, sliderPos) {
-    if (which === 'bottom') return 100 - sliderPos; // invert back
-    return sliderPos;
+    return which === 'bottom' ? 100 - sliderPos : sliderPos;
   }
 
   _name(eid) { return this._hass?.states[eid]?.attributes?.friendly_name || eid; }
@@ -93,7 +87,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         }
         .wrap { display: flex; flex-direction: column; height: 100%; }
 
-        /* Header: icon + name/state */
+        /* Header: icon + name/state (matches ha-tile-container .content) */
         .header {
           display: flex; align-items: center; gap: 10px; padding: 10px;
         }
@@ -120,47 +114,50 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
 
-        /* Features */
+        /* Features (matches hui-card-features) */
         .features { display: flex; flex-direction: column; padding: 0 12px 12px; gap: 12px; }
 
-        /* Open / Stop / Close button row - matches native ha-control-button-group */
-        .btn-row {
-          display: flex; gap: 0; height: 42px;
-        }
+        /* Open/Stop/Close row (matches ha-control-button-group + ha-control-button) */
+        .btn-row { display: flex; height: 42px; }
         .btn-row button {
           flex: 1; display: flex; align-items: center; justify-content: center;
           height: 42px; border: none; background: none; cursor: pointer;
-          color: var(--secondary-text-color); --mdc-icon-size: 20px; padding: 0;
-          border-radius: 12px;
+          color: var(--primary-text-color); --mdc-icon-size: 20px; padding: 0;
+          border-radius: 12px; opacity: 0.8;
         }
-        .btn-row button:hover { background: rgba(127,127,127,0.12); }
-        .btn-row button:disabled { opacity: 0.4; cursor: default; }
+        .btn-row button:hover { background: rgba(127, 127, 127, 0.12); }
+        .btn-row button:active { opacity: 1; }
+        .btn-row button:disabled { opacity: 0.3; cursor: default; }
         .btn-row button:disabled:hover { background: none; }
 
-        /* Slider - matches ha-control-slider */
+        /* Slider track (matches ha-control-slider .slider) */
         .slider {
           position: relative; width: 100%; height: 42px;
           border-radius: 12px; overflow: hidden;
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
+        /* Track background (matches .slider-track-background) */
         .slider-bg {
           position: absolute; inset: 0;
           background: var(--tile-color); opacity: 0.2;
-          pointer-events: none;
         }
+        /* Fill between cursors = fabric */
         .fill {
           position: absolute; top: 0; bottom: 0;
           background: var(--tile-color); opacity: 0.4;
           pointer-events: none;
         }
+        /* Cursor (matches .slider-track-cursor exactly) */
         .cur {
           position: absolute; top: 0;
           width: 10.5px; height: 42px; border-radius: 4px;
-          background: white;
+          background: rgb(255, 255, 255);
           box-shadow: 0px 2px 5px 0px rgba(0, 0, 0, 0.2);
           pointer-events: none; z-index: 2;
         }
+
+        /* Labels below slider */
         .slider-labels {
           display: flex; justify-content: space-between; padding: 2px 2px 0;
         }
@@ -183,9 +180,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           </div>
           <div class="features">
             <div class="btn-row">
-              <button id="openBtn"><ha-icon icon="mdi:arrow-expand-up"></ha-icon></button>
+              <button id="openBtn"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
               <button id="stopBtn"><ha-icon icon="mdi:stop"></ha-icon></button>
-              <button id="closeBtn"><ha-icon icon="mdi:arrow-collapse-down"></ha-icon></button>
+              <button id="closeBtn"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
             </div>
             <div>
               <div class="slider" id="slider">
@@ -213,7 +210,6 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     };
 
     const cfg = this._config;
-    // Open (up): both rails to top → fully open → both HA 100%
     this._els.openBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'open_cover', {});
       this._call(cfg.entity_bottom, 'open_cover', {});
@@ -222,7 +218,6 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       this._call(cfg.entity_top, 'stop_cover', {});
       this._call(cfg.entity_bottom, 'stop_cover', {});
     });
-    // Close (down): top rail at top, bottom rail at bottom → fully closed → both HA 0%
     this._els.closeBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'close_cover', {});
       this._call(cfg.entity_bottom, 'close_cover', {});
@@ -235,7 +230,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (this._hass) this._update();
   }
 
-  // ---- Slider ----
+  // ---- Slider interaction ----
 
   _pct(e) {
     const r = this._els.slider.getBoundingClientRect();
@@ -246,19 +241,13 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   _onStart(e) {
     e.preventDefault();
     const pct = this._pct(e);
-    const topSlider = this._toSlider('top', this._haPos(this._config.entity_top));
-    const botSlider = this._toSlider('bottom', this._haPos(this._config.entity_bottom));
+    const topS = this._getSliderPos('top');
+    const botS = this._getSliderPos('bottom');
 
-    // Pick nearest cursor (in slider space)
-    const dTop = Math.abs(pct - topSlider);
-    const dBot = Math.abs(pct - botSlider);
-    this._dragging = dTop <= dBot ? 'top' : 'bottom';
+    this._dragging = Math.abs(pct - topS) <= Math.abs(pct - botS) ? 'top' : 'bottom';
 
-    if (this._dragging === 'top') {
-      this._pendingTop = pct;
-    } else {
-      this._pendingBottom = pct;
-    }
+    if (this._dragging === 'top') this._pendingTop = pct;
+    else this._pendingBottom = pct;
     this._updateSlider();
 
     document.addEventListener('mousemove', this._onMove);
@@ -271,19 +260,13 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (!this._dragging) return;
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
-
-    // Independent - no constraint between top and bottom
-    if (this._dragging === 'top') {
-      this._pendingTop = pct;
-    } else {
-      this._pendingBottom = pct;
-    }
+    if (this._dragging === 'top') this._pendingTop = pct;
+    else this._pendingBottom = pct;
     this._updateSlider();
   }
 
   _onEnd() {
     if (this._dragging === 'top' && this._pendingTop != null) {
-      // Keep the target position sticky until HA state catches up
       this._targetTop = this._pendingTop;
       this._call(this._config.entity_top, 'set_cover_position', { position: Math.round(this._toHA('top', this._pendingTop)) });
     }
@@ -300,63 +283,59 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     document.removeEventListener('touchend', this._onEnd);
   }
 
+  // Get current slider position for a motor, considering pending/target/actual
+  _getSliderPos(which) {
+    const pending = which === 'top' ? this._pendingTop : this._pendingBottom;
+    if (pending != null) return pending;
+
+    const target = which === 'top' ? this._targetTop : this._targetBot;
+    const haSlider = this._toSlider(which, this._haPos(
+      which === 'top' ? this._config.entity_top : this._config.entity_bottom
+    ));
+
+    if (target != null) {
+      if (Math.abs(haSlider - target) < 2) {
+        if (which === 'top') this._targetTop = null; else this._targetBot = null;
+        return haSlider;
+      }
+      return target;
+    }
+    return haSlider;
+  }
+
   _updateSlider() {
-    const cfg = this._config;
-    const haTop = this._haPos(cfg.entity_top);
-    const haBot = this._haPos(cfg.entity_bottom);
-
-    // Slider positions: use pending (during drag), target (after release, sticky), or HA state
-    let topSlider, botSlider;
-    if (this._pendingTop != null) {
-      topSlider = this._pendingTop;
-    } else if (this._targetTop != null) {
-      // Sticky: keep target until HA catches up (within 2% tolerance)
-      const haSlider = this._toSlider('top', haTop);
-      if (Math.abs(haSlider - this._targetTop) < 2) this._targetTop = null;
-      topSlider = this._targetTop != null ? this._targetTop : haSlider;
-    } else {
-      topSlider = this._toSlider('top', haTop);
-    }
-
-    if (this._pendingBottom != null) {
-      botSlider = this._pendingBottom;
-    } else if (this._targetBot != null) {
-      const haSlider = this._toSlider('bottom', haBot);
-      if (Math.abs(haSlider - this._targetBot) < 2) this._targetBot = null;
-      botSlider = this._targetBot != null ? this._targetBot : haSlider;
-    } else {
-      botSlider = this._toSlider('bottom', haBot);
-    }
-
-    // HA positions for display
-    const topHA = this._pendingTop != null ? this._toHA('top', this._pendingTop) : haTop;
-    const botHA = this._pendingBottom != null ? this._toHA('bottom', this._pendingBottom) : haBot;
-
     const e = this._els;
     if (!e) return;
 
-    // Position cursors (keep within track: 0% = left edge, 100% = right edge minus cursor width)
-    e.curTop.style.left = `calc(${topSlider}% - ${topSlider * 10.5 / 100}px)`;
-    e.curBot.style.left = `calc(${botSlider}% - ${botSlider * 10.5 / 100}px)`;
+    const topS = this._getSliderPos('top');
+    const botS = this._getSliderPos('bottom');
+    const topHA = this._toHA('top', topS);
+    const botHA = this._toHA('bottom', botS);
 
-    // Fill BETWEEN the two cursors = the fabric/curtain
-    const leftPos = Math.min(topSlider, botSlider);
-    const rightPos = Math.max(topSlider, botSlider);
-    e.fill.style.left = `${leftPos}%`;
-    e.fill.style.width = `${rightPos - leftPos}%`;
+    // Position cursors within the track using calc to keep within bounds
+    // At 0%: left edge (left: 0). At 100%: right edge minus cursor width (left: 100% - 10.5px)
+    e.curTop.style.left = `calc(${topS}% - ${topS * 10.5 / 100}px)`;
+    e.curBot.style.left = `calc(${botS}% - ${botS * 10.5 / 100}px)`;
 
-    // Labels show HA percentage
+    // Fill between cursors
+    const left = Math.min(topS, botS);
+    const right = Math.max(topS, botS);
+    e.fill.style.left = `${left}%`;
+    e.fill.style.width = `${right - left}%`;
+
+    // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
     e.lblBot.textContent = `${Math.round(botHA)}%`;
 
-    if (cfg.show_state !== false) {
-      const topState = this._state(cfg.entity_top);
-      const botState = this._state(cfg.entity_bottom);
+    // State text
+    if (this._config.show_state !== false && this._hass) {
+      const topState = this._state(this._config.entity_top);
+      const botState = this._state(this._config.entity_bottom);
       if (topState === 'unavailable' || botState === 'unavailable') {
         e.state.textContent = this._hass.localize?.('state.default.unavailable') || 'Unavailable';
       } else if (topState === 'closed' && botState === 'closed') {
         e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.closed') || 'Closed';
-      } else if (topState === 'open' && botState === 'open' && topHA === 100 && botHA === 100) {
+      } else if (topState === 'open' && botState === 'open' && topHA >= 99 && botHA >= 99) {
         e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.open') || 'Open';
       } else {
         e.state.textContent = `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
@@ -393,7 +372,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.3`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
