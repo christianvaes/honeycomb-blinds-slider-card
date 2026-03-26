@@ -3,40 +3,33 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.1.0
+ * @version 1.1.1
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._dragging = null; // 'top' | 'bottom' | null
+    this._dragging = null;
     this._pendingTop = null;
     this._pendingBottom = null;
-
     this._onMove = this._onMove.bind(this);
     this._onEnd = this._onEnd.bind(this);
   }
-
-  // ---- Config ----
 
   static getConfigForm() {
     return {
       schema: [
         { name: 'entity_top', required: true, selector: { entity: { domain: 'cover' } } },
         { name: 'entity_bottom', required: true, selector: { entity: { domain: 'cover' } } },
-        {
-          name: '', type: 'grid',
-          schema: [
-            { name: 'name', selector: { text: {} } },
-            { name: 'icon', selector: { icon: {} } },
-          ],
-        },
+        { name: '', type: 'grid', schema: [
+          { name: 'name', selector: { text: {} } },
+          { name: 'icon', selector: { icon: {} } },
+        ]},
         { name: 'show_state', selector: { boolean: {} } },
       ],
       computeLabel: (s) => ({
-        entity_top: 'Top motor entity',
-        entity_bottom: 'Bottom motor entity',
+        entity_top: 'Top motor entity', entity_bottom: 'Bottom motor entity',
         name: 'Name', icon: 'Icon', show_state: 'Show state',
       }[s.name] || s.name),
     };
@@ -48,22 +41,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.entity_top || !config.entity_bottom) {
-      throw new Error('Please define both entity_top and entity_bottom');
-    }
+    if (!config.entity_top || !config.entity_bottom) throw new Error('Please define both entity_top and entity_bottom');
     this._config = { show_state: true, ...config };
     this._buildDOM();
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._config || !this._built) return;
-    if (!this._dragging) this._update();
+    if (this._built && !this._dragging) this._update();
   }
 
   getCardSize() { return 2; }
-
-  // ---- Helpers ----
 
   _pos(eid) {
     const s = this._hass?.states[eid];
@@ -71,64 +59,32 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const p = s.attributes.current_position;
     return p != null ? p : (s.state === 'open' ? 100 : 0);
   }
-
-  _name(eid) {
-    return this._hass?.states[eid]?.attributes?.friendly_name || eid;
-  }
-
-  _state(eid) {
-    return this._hass?.states[eid]?.state || 'unavailable';
-  }
-
-  _call(eid, svc, data) {
-    this._hass.callService('cover', svc, { entity_id: eid, ...data });
-  }
-
-  // ---- Build DOM once ----
+  _name(eid) { return this._hass?.states[eid]?.attributes?.friendly_name || eid; }
+  _state(eid) { return this._hass?.states[eid]?.state || 'unavailable'; }
+  _call(eid, svc, data) { this._hass.callService('cover', svc, { entity_id: eid, ...data }); }
 
   _buildDOM() {
-    const cfg = this._config;
-    const sr = this.shadowRoot;
-
-    sr.innerHTML = `
+    this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; }
         ha-card {
           --tile-color: var(--state-cover-active-color, var(--state-cover-color, rgb(189, 157, 255)));
-          height: 100%;
-          padding: 0;
+          height: 100%; padding: 0;
         }
-        .container {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-        }
+        .wrap { display: flex; flex-direction: column; height: 100%; }
 
-        /* Header row */
+        /* Header: icon + name/state */
         .header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px;
+          display: flex; align-items: center; gap: 10px; padding: 10px;
         }
         .icon-wrap {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px; height: 36px;
-          border-radius: 50%;
-          flex-shrink: 0;
-          --mdc-icon-size: 24px;
-          color: var(--tile-color);
+          position: relative; display: flex; align-items: center; justify-content: center;
+          width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+          --mdc-icon-size: 24px; color: var(--tile-color);
         }
         .icon-wrap::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          background: var(--tile-color);
-          opacity: 0.2;
+          content: ''; position: absolute; inset: 0; border-radius: 50%;
+          background: var(--tile-color); opacity: 0.2;
         }
         .icon-wrap.off { color: var(--disabled-color); }
         .icon-wrap.off::before { background: var(--disabled-color); }
@@ -143,80 +99,55 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           color: var(--secondary-text-color);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .stop-btn {
-          display: flex; align-items: center; justify-content: center;
-          width: 36px; height: 36px; border-radius: 20px;
-          border: none; background: none; cursor: pointer;
-          color: var(--secondary-text-color); --mdc-icon-size: 20px; padding: 0;
-        }
-        .stop-btn:hover { background: rgba(127,127,127,0.15); }
-        .stop-btn:disabled { color: var(--disabled-color); cursor: default; }
 
         /* Features */
-        .features {
-          display: flex; flex-direction: column;
-          padding: 0 12px 12px; gap: 12px;
-        }
+        .features { display: flex; flex-direction: column; padding: 0 12px 12px; gap: 12px; }
 
-        /* Open/Close row */
-        .oc-row { display: flex; gap: 8px; }
-        .oc-row button {
+        /* Open / Stop / Close button row - matches native ha-control-button-group */
+        .btn-row {
+          display: flex; gap: 0; height: 42px;
+          border-radius: 12px; overflow: hidden;
+          background: rgba(127,127,127,0.1);
+        }
+        .btn-row button {
           flex: 1; display: flex; align-items: center; justify-content: center;
-          height: 42px; border-radius: 12px; border: none;
-          background: rgba(127,127,127,0.15); cursor: pointer;
+          height: 42px; border: none; background: none; cursor: pointer;
           color: var(--primary-text-color); --mdc-icon-size: 20px; padding: 0;
         }
-        .oc-row button:hover { background: rgba(127,127,127,0.25); }
-        .oc-row button:disabled { opacity: 0.4; cursor: default; }
+        .btn-row button:hover { background: rgba(127,127,127,0.15); }
+        .btn-row button:disabled { opacity: 0.4; cursor: default; }
+        .btn-row button:disabled:hover { background: none; }
 
         /* Slider */
         .slider {
-          position: relative;
-          width: 100%; height: 42px;
-          border-radius: 12px;
-          background: rgba(127,127,127,0.1);
-          touch-action: none;
-          cursor: pointer;
-          user-select: none;
-          -webkit-user-select: none;
+          position: relative; width: 100%; height: 42px;
+          border-radius: 12px; background: rgba(127,127,127,0.1);
+          touch-action: none; cursor: pointer;
+          user-select: none; -webkit-user-select: none;
         }
         .fill-bot {
           position: absolute; top: 0; bottom: 0; left: 0;
           border-radius: 12px 0 0 12px;
-          background: var(--primary-color, #03a9f4);
-          opacity: 0.35;
-          pointer-events: none;
-        }
-        .fill-mid {
-          position: absolute; top: 0; bottom: 0;
-          background: rgba(127,127,127,0.08);
+          background: var(--primary-color, #03a9f4); opacity: 0.35;
           pointer-events: none;
         }
         .fill-top {
           position: absolute; top: 0; bottom: 0; right: 0;
           border-radius: 0 12px 12px 0;
-          background: var(--tile-color);
-          opacity: 0.35;
+          background: var(--tile-color); opacity: 0.35;
           pointer-events: none;
         }
         .cur {
           position: absolute; top: 0;
-          width: 10px; height: 42px;
-          border-radius: 4px;
-          background: white;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-          pointer-events: none;
-          z-index: 2;
+          width: 10px; height: 42px; border-radius: 4px;
+          background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+          pointer-events: none; z-index: 2;
         }
-        .cur-top { background: white; }
-        .cur-bot { background: white; }
         .slider-labels {
-          display: flex; justify-content: space-between;
-          padding: 2px 2px 0;
+          display: flex; justify-content: space-between; padding: 2px 2px 0;
         }
         .slider-label {
-          font-size: 11px; font-weight: 500;
-          color: var(--secondary-text-color);
+          font-size: 11px; font-weight: 500; color: var(--secondary-text-color);
           display: flex; align-items: center; gap: 4px;
         }
         .dot { width: 6px; height: 6px; border-radius: 3px; }
@@ -224,31 +155,26 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         .dot-bot { background: var(--primary-color, #03a9f4); }
       </style>
       <ha-card>
-        <div class="container">
+        <div class="wrap">
           <div class="header">
-            <div class="icon-wrap" id="iconWrap">
-              <ha-icon id="icon"></ha-icon>
-            </div>
+            <div class="icon-wrap" id="iconWrap"><ha-icon id="icon"></ha-icon></div>
             <div class="info">
               <div class="primary" id="name"></div>
               <div class="secondary" id="state"></div>
             </div>
-            <button class="stop-btn" id="stopBtn">
-              <ha-icon icon="mdi:stop"></ha-icon>
-            </button>
           </div>
           <div class="features">
-            <div class="oc-row">
-              <button id="openBtn"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
-              <button id="closeBtn"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
+            <div class="btn-row">
+              <button id="openBtn"><ha-icon icon="mdi:arrow-expand-up"></ha-icon></button>
+              <button id="stopBtn"><ha-icon icon="mdi:stop"></ha-icon></button>
+              <button id="closeBtn"><ha-icon icon="mdi:arrow-collapse-down"></ha-icon></button>
             </div>
             <div>
               <div class="slider" id="slider">
                 <div class="fill-bot" id="fillBot"></div>
-                <div class="fill-mid" id="fillMid"></div>
                 <div class="fill-top" id="fillTop"></div>
-                <div class="cur cur-bot" id="curBot"></div>
-                <div class="cur cur-top" id="curTop"></div>
+                <div class="cur" id="curBot"></div>
+                <div class="cur" id="curTop"></div>
               </div>
               <div class="slider-labels">
                 <div class="slider-label"><span class="dot dot-bot"></span>Bottom <span id="lblBot"></span></div>
@@ -260,40 +186,28 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       </ha-card>
     `;
 
-    // Cache elements
+    const $ = (id) => this.shadowRoot.getElementById(id);
     this._els = {
-      iconWrap: sr.getElementById('iconWrap'),
-      icon: sr.getElementById('icon'),
-      name: sr.getElementById('name'),
-      state: sr.getElementById('state'),
-      stopBtn: sr.getElementById('stopBtn'),
-      openBtn: sr.getElementById('openBtn'),
-      closeBtn: sr.getElementById('closeBtn'),
-      slider: sr.getElementById('slider'),
-      fillBot: sr.getElementById('fillBot'),
-      fillMid: sr.getElementById('fillMid'),
-      fillTop: sr.getElementById('fillTop'),
-      curBot: sr.getElementById('curBot'),
-      curTop: sr.getElementById('curTop'),
-      lblBot: sr.getElementById('lblBot'),
-      lblTop: sr.getElementById('lblTop'),
+      iconWrap: $('iconWrap'), icon: $('icon'), name: $('name'), state: $('state'),
+      openBtn: $('openBtn'), stopBtn: $('stopBtn'), closeBtn: $('closeBtn'),
+      slider: $('slider'), fillBot: $('fillBot'), fillTop: $('fillTop'),
+      curBot: $('curBot'), curTop: $('curTop'), lblBot: $('lblBot'), lblTop: $('lblTop'),
     };
 
-    // Bind events
-    this._els.stopBtn.addEventListener('click', () => {
-      this._call(cfg.entity_top, 'stop_cover', {});
-      this._call(cfg.entity_bottom, 'stop_cover', {});
-    });
+    const cfg = this._config;
     this._els.openBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'set_cover_position', { position: 100 });
       this._call(cfg.entity_bottom, 'set_cover_position', { position: 100 });
+    });
+    this._els.stopBtn.addEventListener('click', () => {
+      this._call(cfg.entity_top, 'stop_cover', {});
+      this._call(cfg.entity_bottom, 'stop_cover', {});
     });
     this._els.closeBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'set_cover_position', { position: 100 });
       this._call(cfg.entity_bottom, 'set_cover_position', { position: 0 });
     });
 
-    // Slider: the TRACK handles all pointer events
     this._els.slider.addEventListener('mousedown', (e) => this._onStart(e));
     this._els.slider.addEventListener('touchstart', (e) => this._onStart(e), { passive: false });
 
@@ -301,7 +215,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (this._hass) this._update();
   }
 
-  // ---- Slider interaction ----
+  // ---- Slider ----
 
   _pct(e) {
     const r = this._els.slider.getBoundingClientRect();
@@ -315,16 +229,16 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const topP = this._pos(this._config.entity_top);
     const botP = this._pos(this._config.entity_bottom);
 
-    // Pick the closest cursor
+    // Pick nearest cursor
     const dTop = Math.abs(pct - topP);
     const dBot = Math.abs(pct - botP);
-    this._dragging = dTop <= dBot ? 'top' : 'bottom';
+    this._dragging = dTop < dBot ? 'top' : 'bottom';
 
-    // Apply immediately
+    // Apply - NO crossing constraint, both thumbs are independent
     if (this._dragging === 'top') {
-      this._pendingTop = Math.max(pct, botP);
+      this._pendingTop = pct;
     } else {
-      this._pendingBottom = Math.min(pct, topP);
+      this._pendingBottom = pct;
     }
     this._updateSlider();
 
@@ -338,13 +252,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (!this._dragging) return;
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
-    const curTop = this._pendingTop != null ? this._pendingTop : this._pos(this._config.entity_top);
-    const curBot = this._pendingBottom != null ? this._pendingBottom : this._pos(this._config.entity_bottom);
 
+    // Independent - no constraint between top and bottom
     if (this._dragging === 'top') {
-      this._pendingTop = Math.max(pct, curBot);
+      this._pendingTop = pct;
     } else {
-      this._pendingBottom = Math.min(pct, curTop);
+      this._pendingBottom = pct;
     }
     this._updateSlider();
   }
@@ -359,14 +272,11 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     this._pendingTop = null;
     this._pendingBottom = null;
     this._dragging = null;
-
     document.removeEventListener('mousemove', this._onMove);
     document.removeEventListener('mouseup', this._onEnd);
     document.removeEventListener('touchmove', this._onMove);
     document.removeEventListener('touchend', this._onEnd);
   }
-
-  // ---- Update ----
 
   _updateSlider() {
     const topP = this._pendingTop != null ? this._pendingTop : this._pos(this._config.entity_top);
@@ -374,23 +284,14 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const e = this._els;
     if (!e) return;
 
-    // Position cursors (center the 10px cursor on the percentage)
     e.curTop.style.left = `calc(${topP}% - 5px)`;
     e.curBot.style.left = `calc(${botP}% - 5px)`;
-
-    // Fills
-    e.fillBot.style.width = `${botP}%`;
     e.fillTop.style.width = `${100 - topP}%`;
-    e.fillMid.style.left = `${botP}%`;
-    e.fillMid.style.width = `${Math.max(0, topP - botP)}%`;
-
-    // Labels
+    e.fillBot.style.width = `${botP}%`;
     e.lblTop.textContent = `${Math.round(topP)}%`;
     e.lblBot.textContent = `${Math.round(botP)}%`;
 
-    // State text
-    const showState = this._config.show_state !== false;
-    if (showState) {
+    if (this._config.show_state !== false) {
       const unavail = this._state(this._config.entity_top) === 'unavailable' ||
                       this._state(this._config.entity_bottom) === 'unavailable';
       e.state.textContent = unavail ? 'Unavailable' : `Top ${Math.round(topP)}% · Bottom ${Math.round(botP)}%`;
@@ -398,28 +299,18 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   }
 
   _update() {
-    if (!this._built || !this._hass || !this._config) return;
+    if (!this._built || !this._hass) return;
     const cfg = this._config;
     const e = this._els;
     const unavail = this._state(cfg.entity_top) === 'unavailable' || this._state(cfg.entity_bottom) === 'unavailable';
 
-    // Icon
     e.icon.setAttribute('icon', cfg.icon || 'mdi:blinds-horizontal');
     e.iconWrap.classList.toggle('off', unavail);
-
-    // Name
-    const rawName = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor).*$/i, '').trim() || 'Honeycomb Blind';
-    e.name.textContent = rawName;
-
-    // State
+    e.name.textContent = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor|bovenkant).*$/i, '').trim() || 'Honeycomb Blind';
     e.state.style.display = cfg.show_state !== false ? '' : 'none';
-
-    // Buttons
-    e.stopBtn.disabled = unavail;
     e.openBtn.disabled = unavail;
+    e.stopBtn.disabled = unavail;
     e.closeBtn.disabled = unavail;
-
-    // Slider
     this._updateSlider();
   }
 }
@@ -436,7 +327,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.1.0 `,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.1.1 `,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
