@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.4.2
+ * @version 1.4.3
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -296,10 +296,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const topHA = this._toHA('top', topS);
     const botHA = this._toHA('bottom', botS);
 
-    // Cursor: at 0% → left:0, at 100% → right edge minus cursor width
-    // Use calc to interpolate: left = X% - X/100 * 4px
-    e.curTop.style.left = `calc(${topS}% - ${topS * 4 / 100}px)`;
-    e.curBot.style.left = `calc(${botS}% - ${botS * 4 / 100}px)`;
+    // Cursor positioned inside the fill, with 5.25px inset from edge (matching native ::after right:5.25px)
+    // At 0%: left = 5.25px (inset from left edge)
+    // At 100%: left = 100% - 4px - 5.25px (inset from right edge)
+    // Interpolate between these two positions
+    e.curTop.style.left = `calc(${topS}% - ${topS * (4 + 5.25) / 100}px + 5.25px)`;
+    e.curBot.style.left = `calc(${botS}% - ${botS * (4 + 5.25) / 100}px + 5.25px)`;
 
     // Fill = fabric area between the two cursors
     const left = Math.min(topS, botS);
@@ -365,7 +367,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.2`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.3`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
