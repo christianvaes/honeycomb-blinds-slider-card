@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.2.2
+ * @version 1.2.3
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -126,15 +126,14 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         /* Open / Stop / Close button row - matches native ha-control-button-group */
         .btn-row {
           display: flex; gap: 0; height: 42px;
-          border-radius: 12px; overflow: hidden;
-          background: rgba(127,127,127,0.1);
         }
         .btn-row button {
           flex: 1; display: flex; align-items: center; justify-content: center;
           height: 42px; border: none; background: none; cursor: pointer;
-          color: var(--primary-text-color); --mdc-icon-size: 20px; padding: 0;
+          color: var(--secondary-text-color); --mdc-icon-size: 20px; padding: 0;
+          border-radius: 12px;
         }
-        .btn-row button:hover { background: rgba(127,127,127,0.15); }
+        .btn-row button:hover { background: rgba(127,127,127,0.12); }
         .btn-row button:disabled { opacity: 0.4; cursor: default; }
         .btn-row button:disabled:hover { background: none; }
 
@@ -351,9 +350,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     e.lblBot.textContent = `${Math.round(botHA)}%`;
 
     if (cfg.show_state !== false) {
-      const unavail = this._state(cfg.entity_top) === 'unavailable' ||
-                      this._state(cfg.entity_bottom) === 'unavailable';
-      e.state.textContent = unavail ? 'Unavailable' : `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
+      const topState = this._state(cfg.entity_top);
+      const botState = this._state(cfg.entity_bottom);
+      if (topState === 'unavailable' || botState === 'unavailable') {
+        e.state.textContent = this._hass.localize?.('state.default.unavailable') || 'Unavailable';
+      } else if (topState === 'closed' && botState === 'closed') {
+        e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.closed') || 'Closed';
+      } else if (topState === 'open' && botState === 'open' && topHA === 100 && botHA === 100) {
+        e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.open') || 'Open';
+      } else {
+        e.state.textContent = `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
+      }
     }
   }
 
@@ -386,7 +393,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.2`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.3`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
