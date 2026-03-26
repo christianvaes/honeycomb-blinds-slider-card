@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.2.1
+ * @version 1.2.2
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -138,12 +138,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         .btn-row button:disabled { opacity: 0.4; cursor: default; }
         .btn-row button:disabled:hover { background: none; }
 
-        /* Slider */
+        /* Slider - matches ha-control-slider */
         .slider {
           position: relative; width: 100%; height: 42px;
-          border-radius: 12px; background: rgba(127,127,127,0.1);
+          border-radius: 12px; overflow: hidden;
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
+        }
+        .slider-bg {
+          position: absolute; inset: 0;
+          background: var(--tile-color); opacity: 0.2;
+          pointer-events: none;
         }
         .fill {
           position: absolute; top: 0; bottom: 0;
@@ -152,8 +157,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         }
         .cur {
           position: absolute; top: 0;
-          width: 10px; height: 42px; border-radius: 4px;
-          background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+          width: 10.5px; height: 42px; border-radius: 4px;
+          background: white;
+          box-shadow: 0px 2px 5px 0px rgba(0, 0, 0, 0.2);
           pointer-events: none; z-index: 2;
         }
         .slider-labels {
@@ -184,6 +190,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
             </div>
             <div>
               <div class="slider" id="slider">
+                <div class="slider-bg"></div>
                 <div class="fill" id="fill"></div>
                 <div class="cur" id="curTop"></div>
                 <div class="cur" id="curBot"></div>
@@ -329,9 +336,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const e = this._els;
     if (!e) return;
 
-    // Position cursors
-    e.curTop.style.left = `calc(${topSlider}% - 5px)`;
-    e.curBot.style.left = `calc(${botSlider}% - 5px)`;
+    // Position cursors (keep within track: 0% = left edge, 100% = right edge minus cursor width)
+    e.curTop.style.left = `calc(${topSlider}% - ${topSlider * 10.5 / 100}px)`;
+    e.curBot.style.left = `calc(${botSlider}% - ${botSlider * 10.5 / 100}px)`;
 
     // Fill BETWEEN the two cursors = the fabric/curtain
     const leftPos = Math.min(topSlider, botSlider);
@@ -379,7 +386,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.1`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.2`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
