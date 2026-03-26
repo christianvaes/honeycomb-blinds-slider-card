@@ -6,7 +6,7 @@
  * @version 1.0.2
  */
 
-const CARD_VERSION = '1.0.2';
+const CARD_VERSION = '1.0.3';
 
 class HoneycombBlindsSliderCard extends HTMLElement {
   constructor() {
@@ -194,13 +194,16 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const topP = this._pendingTop != null ? this._pendingTop : this._pos(this._config.entity_top);
     const botP = this._pendingBottom != null ? this._pendingBottom : this._pos(this._config.entity_bottom);
 
-    const cursorTop = this.shadowRoot.querySelector('.cursor-top');
-    const cursorBot = this.shadowRoot.querySelector('.cursor-bottom');
-    const fillTop = this.shadowRoot.querySelector('.fill-top');
-    const fillBot = this.shadowRoot.querySelector('.fill-bottom');
-    const tipTop = this.shadowRoot.querySelector('.tooltip-top');
-    const tipBot = this.shadowRoot.querySelector('.tooltip-bottom');
-    const stateEl = this.shadowRoot.querySelector('.secondary');
+    const sr = this.shadowRoot;
+    const cursorTop = sr.querySelector('.cursor-top');
+    const cursorBot = sr.querySelector('.cursor-bottom');
+    const fillTop = sr.querySelector('.fill-top');
+    const fillBot = sr.querySelector('.fill-bottom');
+    const tipTop = sr.querySelector('.tooltip-top');
+    const tipBot = sr.querySelector('.tooltip-bottom');
+    const tipWrapTop = sr.querySelector('.tooltip-wrap-top');
+    const tipWrapBot = sr.querySelector('.tooltip-wrap-bottom');
+    const stateEl = sr.querySelector('.secondary');
 
     if (cursorTop) cursorTop.style.left = `${topP}%`;
     if (cursorBot) cursorBot.style.left = `${botP}%`;
@@ -208,6 +211,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (fillBot) { fillBot.style.width = `${botP}%`; }
     if (tipTop) tipTop.textContent = `${Math.round(topP)}%`;
     if (tipBot) tipBot.textContent = `${Math.round(botP)}%`;
+    if (tipWrapTop) { tipWrapTop.style.left = `${topP}%`; tipWrapTop.classList.toggle('active', this._dragging === 'top'); }
+    if (tipWrapBot) { tipWrapBot.style.left = `${botP}%`; tipWrapBot.classList.toggle('active', this._dragging === 'bottom'); }
     if (stateEl) stateEl.textContent = `Top ${Math.round(topP)}% · Bottom ${Math.round(botP)}%`;
   }
 
@@ -413,6 +418,11 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         .slider-label .dot.top { background: var(--tile-color); }
         .slider-label .dot.bottom { background: var(--primary-color, #03a9f4); }
 
+        .slider-outer {
+          position: relative;
+          padding: 0 6px;
+        }
+
         .slider {
           position: relative;
           width: 100%;
@@ -431,7 +441,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           opacity: 0.2;
         }
 
-        /* Top fill: from topP% to 100% - represents top portion above top cursor */
+        /* Top fill: from topP% to 100% */
         .fill-top {
           position: absolute;
           top: 0;
@@ -441,7 +451,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           pointer-events: none;
         }
 
-        /* Bottom fill: from 0% to botP% - represents bottom portion below bottom cursor */
+        /* Bottom fill: from 0% to botP% */
         .fill-bottom {
           position: absolute;
           top: 0;
@@ -452,12 +462,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           pointer-events: none;
         }
 
-        /* Cursors - match ha-control-slider cursor: white, 10.5px wide, full height, 4px radius */
+        /* Cursors - positioned OUTSIDE .slider overflow:hidden so they aren't clipped */
         .cursor {
           position: absolute;
           top: 0;
-          width: 10px;
-          height: 100%;
+          width: 12px;
+          height: 42px;
           border-radius: 4px;
           background: white;
           transform: translateX(-50%);
@@ -465,28 +475,26 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           touch-action: none;
           z-index: 2;
           transition: left 0.2s ease;
-          box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+          /* Make grab area bigger than visual */
+          box-sizing: content-box;
+          padding: 0 8px;
+          background-clip: content-box;
         }
         .cursor.active {
           transition: none;
           cursor: grabbing;
-          box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
-          width: 14px;
         }
 
-        /* Tooltip - matches HA tooltip: dark bg, rounded, above slider */
+        /* Tooltip */
         .tooltip-wrap {
           position: absolute;
-          top: -28px;
+          top: -26px;
           transform: translateX(-50%);
           z-index: 3;
           pointer-events: none;
           opacity: 0;
           transition: opacity 0.15s, left 0.2s ease;
-        }
-        .cursor.active ~ .tooltip-wrap,
-        .cursor:hover ~ .tooltip-wrap {
-          opacity: 1;
         }
         .tooltip-wrap.active {
           opacity: 1;
@@ -525,10 +533,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
               <button id="btn-close"${unavail ? ' disabled' : ''}><ha-icon icon="mdi:arrow-collapse-down"></ha-icon></button>
             </div>
             <div class="slider-wrapper">
-              <div class="slider" id="slider">
-                <div class="slider-bg"></div>
-                <div class="fill-bottom" style="width:${botP}%"></div>
-                <div class="fill-top" style="left:${topP}%;width:${100 - topP}%"></div>
+              <div class="slider-outer">
+                <div class="slider" id="slider">
+                  <div class="slider-bg"></div>
+                  <div class="fill-bottom" style="width:${botP}%"></div>
+                  <div class="fill-top" style="left:${topP}%;width:${100 - topP}%"></div>
+                </div>
                 <div class="cursor cursor-top" style="left:${topP}%"></div>
                 <div class="tooltip-wrap tooltip-wrap-top" style="left:${topP}%"><span class="tooltip tooltip-top">${Math.round(topP)}%</span></div>
                 <div class="cursor cursor-bottom" style="left:${botP}%"></div>
