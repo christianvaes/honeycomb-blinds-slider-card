@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.3.2
+ * @version 1.3.3
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -82,7 +82,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       <style>
         :host { display: block; }
         ha-card {
-          --tile-color: var(--state-cover-closed-color, var(--state-cover-inactive-color, var(--state-inactive-color)));
+          --tile-color: var(--state-cover-active-color, rgb(189, 157, 255));
           height: 100%; padding: 0;
         }
         .wrap { display: flex; flex-direction: column; height: 100%; }
@@ -377,7 +377,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.2`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.3`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
