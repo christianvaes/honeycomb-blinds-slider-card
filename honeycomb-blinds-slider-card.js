@@ -1,25 +1,24 @@
 /**
  * Honeycomb Blinds Slider Card
- * Custom Home Assistant Lovelace card for plisse/honeycomb blinds with dual motors.
- * Styled to match the native HA tile card with cover-position slider.
+ * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
+ * Styled to match the native HA tile card.
  *
- * @version 1.0.2
+ * @version 1.1.0
  */
-
-const CARD_VERSION = '1.0.3';
 
 class HoneycombBlindsSliderCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._dragging = null;
+    this._dragging = null; // 'top' | 'bottom' | null
     this._pendingTop = null;
     this._pendingBottom = null;
-    this._boundMouseMove = this._onMouseMove.bind(this);
-    this._boundMouseUp = this._onMouseUp.bind(this);
-    this._boundTouchMove = this._onTouchMove.bind(this);
-    this._boundTouchEnd = this._onTouchEnd.bind(this);
+
+    this._onMove = this._onMove.bind(this);
+    this._onEnd = this._onEnd.bind(this);
   }
+
+  // ---- Config ----
 
   static getConfigForm() {
     return {
@@ -27,8 +26,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         { name: 'entity_top', required: true, selector: { entity: { domain: 'cover' } } },
         { name: 'entity_bottom', required: true, selector: { entity: { domain: 'cover' } } },
         {
-          name: '',
-          type: 'grid',
+          name: '', type: 'grid',
           schema: [
             { name: 'name', selector: { text: {} } },
             { name: 'icon', selector: { icon: {} } },
@@ -36,42 +34,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         },
         { name: 'show_state', selector: { boolean: {} } },
       ],
-      computeLabel: (schema) => {
-        const labels = {
-          entity_top: 'Top motor entity',
-          entity_bottom: 'Bottom motor entity',
-          name: 'Name',
-          icon: 'Icon',
-          show_state: 'Show state',
-        };
-        return labels[schema.name] || schema.name;
-      },
+      computeLabel: (s) => ({
+        entity_top: 'Top motor entity',
+        entity_bottom: 'Bottom motor entity',
+        name: 'Name', icon: 'Icon', show_state: 'Show state',
+      }[s.name] || s.name),
     };
   }
 
   static getStubConfig(hass) {
-    const covers = Object.keys(hass.states).filter(eid => eid.startsWith('cover.'));
-    return {
-      entity_top: covers[0] || '',
-      entity_bottom: covers[1] || covers[0] || '',
-      show_state: true,
-    };
-  }
-
-  set hass(hass) {
-    const oldHass = this._hass;
-    this._hass = hass;
-    if (!this._config) return;
-
-    const t = this._config.entity_top;
-    const b = this._config.entity_bottom;
-    if (
-      !oldHass ||
-      oldHass.states[t] !== hass.states[t] ||
-      oldHass.states[b] !== hass.states[b]
-    ) {
-      if (!this._dragging) this._render();
-    }
+    const c = Object.keys(hass.states).filter(e => e.startsWith('cover.'));
+    return { entity_top: c[0] || '', entity_bottom: c[1] || c[0] || '', show_state: true };
   }
 
   setConfig(config) {
@@ -79,12 +52,18 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       throw new Error('Please define both entity_top and entity_bottom');
     }
     this._config = { show_state: true, ...config };
-    if (this._hass) this._render();
+    this._buildDOM();
   }
 
-  getCardSize() {
-    return 2;
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config || !this._built) return;
+    if (!this._dragging) this._update();
   }
+
+  getCardSize() { return 2; }
+
+  // ---- Helpers ----
 
   _pos(eid) {
     const s = this._hass?.states[eid];
@@ -101,58 +80,264 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     return this._hass?.states[eid]?.state || 'unavailable';
   }
 
-  _call(eid, svc, data = {}) {
+  _call(eid, svc, data) {
     this._hass.callService('cover', svc, { entity_id: eid, ...data });
   }
 
-  _handleOpen() {
-    this._call(this._config.entity_top, 'set_cover_position', { position: 100 });
-    this._call(this._config.entity_bottom, 'set_cover_position', { position: 100 });
+  // ---- Build DOM once ----
+
+  _buildDOM() {
+    const cfg = this._config;
+    const sr = this.shadowRoot;
+
+    sr.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-card {
+          --tile-color: var(--state-cover-active-color, var(--state-cover-color, rgb(189, 157, 255)));
+          height: 100%;
+          padding: 0;
+        }
+        .container {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+        }
+
+        /* Header row */
+        .header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px;
+        }
+        .icon-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px; height: 36px;
+          border-radius: 50%;
+          flex-shrink: 0;
+          --mdc-icon-size: 24px;
+          color: var(--tile-color);
+        }
+        .icon-wrap::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: var(--tile-color);
+          opacity: 0.2;
+        }
+        .icon-wrap.off { color: var(--disabled-color); }
+        .icon-wrap.off::before { background: var(--disabled-color); }
+        .info { flex: 1; min-width: 0; }
+        .primary {
+          font-weight: 500; font-size: 14px; line-height: 20px;
+          color: var(--primary-text-color);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .secondary {
+          font-weight: 400; font-size: 12px; line-height: 16px;
+          color: var(--secondary-text-color);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .stop-btn {
+          display: flex; align-items: center; justify-content: center;
+          width: 36px; height: 36px; border-radius: 20px;
+          border: none; background: none; cursor: pointer;
+          color: var(--secondary-text-color); --mdc-icon-size: 20px; padding: 0;
+        }
+        .stop-btn:hover { background: rgba(127,127,127,0.15); }
+        .stop-btn:disabled { color: var(--disabled-color); cursor: default; }
+
+        /* Features */
+        .features {
+          display: flex; flex-direction: column;
+          padding: 0 12px 12px; gap: 12px;
+        }
+
+        /* Open/Close row */
+        .oc-row { display: flex; gap: 8px; }
+        .oc-row button {
+          flex: 1; display: flex; align-items: center; justify-content: center;
+          height: 42px; border-radius: 12px; border: none;
+          background: rgba(127,127,127,0.15); cursor: pointer;
+          color: var(--primary-text-color); --mdc-icon-size: 20px; padding: 0;
+        }
+        .oc-row button:hover { background: rgba(127,127,127,0.25); }
+        .oc-row button:disabled { opacity: 0.4; cursor: default; }
+
+        /* Slider */
+        .slider {
+          position: relative;
+          width: 100%; height: 42px;
+          border-radius: 12px;
+          background: rgba(127,127,127,0.1);
+          touch-action: none;
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+        }
+        .fill-bot {
+          position: absolute; top: 0; bottom: 0; left: 0;
+          border-radius: 12px 0 0 12px;
+          background: var(--primary-color, #03a9f4);
+          opacity: 0.35;
+          pointer-events: none;
+        }
+        .fill-mid {
+          position: absolute; top: 0; bottom: 0;
+          background: rgba(127,127,127,0.08);
+          pointer-events: none;
+        }
+        .fill-top {
+          position: absolute; top: 0; bottom: 0; right: 0;
+          border-radius: 0 12px 12px 0;
+          background: var(--tile-color);
+          opacity: 0.35;
+          pointer-events: none;
+        }
+        .cur {
+          position: absolute; top: 0;
+          width: 10px; height: 42px;
+          border-radius: 4px;
+          background: white;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+          pointer-events: none;
+          z-index: 2;
+        }
+        .cur-top { background: white; }
+        .cur-bot { background: white; }
+        .slider-labels {
+          display: flex; justify-content: space-between;
+          padding: 2px 2px 0;
+        }
+        .slider-label {
+          font-size: 11px; font-weight: 500;
+          color: var(--secondary-text-color);
+          display: flex; align-items: center; gap: 4px;
+        }
+        .dot { width: 6px; height: 6px; border-radius: 3px; }
+        .dot-top { background: var(--tile-color); }
+        .dot-bot { background: var(--primary-color, #03a9f4); }
+      </style>
+      <ha-card>
+        <div class="container">
+          <div class="header">
+            <div class="icon-wrap" id="iconWrap">
+              <ha-icon id="icon"></ha-icon>
+            </div>
+            <div class="info">
+              <div class="primary" id="name"></div>
+              <div class="secondary" id="state"></div>
+            </div>
+            <button class="stop-btn" id="stopBtn">
+              <ha-icon icon="mdi:stop"></ha-icon>
+            </button>
+          </div>
+          <div class="features">
+            <div class="oc-row">
+              <button id="openBtn"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
+              <button id="closeBtn"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
+            </div>
+            <div>
+              <div class="slider" id="slider">
+                <div class="fill-bot" id="fillBot"></div>
+                <div class="fill-mid" id="fillMid"></div>
+                <div class="fill-top" id="fillTop"></div>
+                <div class="cur cur-bot" id="curBot"></div>
+                <div class="cur cur-top" id="curTop"></div>
+              </div>
+              <div class="slider-labels">
+                <div class="slider-label"><span class="dot dot-bot"></span>Bottom <span id="lblBot"></span></div>
+                <div class="slider-label"><span id="lblTop"></span> Top <span class="dot dot-top"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+
+    // Cache elements
+    this._els = {
+      iconWrap: sr.getElementById('iconWrap'),
+      icon: sr.getElementById('icon'),
+      name: sr.getElementById('name'),
+      state: sr.getElementById('state'),
+      stopBtn: sr.getElementById('stopBtn'),
+      openBtn: sr.getElementById('openBtn'),
+      closeBtn: sr.getElementById('closeBtn'),
+      slider: sr.getElementById('slider'),
+      fillBot: sr.getElementById('fillBot'),
+      fillMid: sr.getElementById('fillMid'),
+      fillTop: sr.getElementById('fillTop'),
+      curBot: sr.getElementById('curBot'),
+      curTop: sr.getElementById('curTop'),
+      lblBot: sr.getElementById('lblBot'),
+      lblTop: sr.getElementById('lblTop'),
+    };
+
+    // Bind events
+    this._els.stopBtn.addEventListener('click', () => {
+      this._call(cfg.entity_top, 'stop_cover', {});
+      this._call(cfg.entity_bottom, 'stop_cover', {});
+    });
+    this._els.openBtn.addEventListener('click', () => {
+      this._call(cfg.entity_top, 'set_cover_position', { position: 100 });
+      this._call(cfg.entity_bottom, 'set_cover_position', { position: 100 });
+    });
+    this._els.closeBtn.addEventListener('click', () => {
+      this._call(cfg.entity_top, 'set_cover_position', { position: 100 });
+      this._call(cfg.entity_bottom, 'set_cover_position', { position: 0 });
+    });
+
+    // Slider: the TRACK handles all pointer events
+    this._els.slider.addEventListener('mousedown', (e) => this._onStart(e));
+    this._els.slider.addEventListener('touchstart', (e) => this._onStart(e), { passive: false });
+
+    this._built = true;
+    if (this._hass) this._update();
   }
 
-  _handleClose() {
-    this._call(this._config.entity_top, 'set_cover_position', { position: 100 });
-    this._call(this._config.entity_bottom, 'set_cover_position', { position: 0 });
+  // ---- Slider interaction ----
+
+  _pct(e) {
+    const r = this._els.slider.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    return Math.max(0, Math.min(100, (x / r.width) * 100));
   }
 
-  _handleStop() {
-    this._call(this._config.entity_top, 'stop_cover');
-    this._call(this._config.entity_bottom, 'stop_cover');
-  }
-
-  // ---- Slider ----
-
-  _pctFromEvent(e) {
-    const track = this.shadowRoot.querySelector('.slider');
-    if (!track) return null;
-    const rect = track.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    return Math.max(0, Math.min(100, (x / rect.width) * 100));
-  }
-
-  _onThumbDown(which, e) {
+  _onStart(e) {
     e.preventDefault();
-    e.stopPropagation();
-    this._dragging = which;
-    const thumb = this.shadowRoot.querySelector(`.cursor-${which}`);
-    if (thumb) thumb.classList.add('active');
-    if (e.type === 'touchstart') {
-      document.addEventListener('touchmove', this._boundTouchMove, { passive: false });
-      document.addEventListener('touchend', this._boundTouchEnd);
+    const pct = this._pct(e);
+    const topP = this._pos(this._config.entity_top);
+    const botP = this._pos(this._config.entity_bottom);
+
+    // Pick the closest cursor
+    const dTop = Math.abs(pct - topP);
+    const dBot = Math.abs(pct - botP);
+    this._dragging = dTop <= dBot ? 'top' : 'bottom';
+
+    // Apply immediately
+    if (this._dragging === 'top') {
+      this._pendingTop = Math.max(pct, botP);
     } else {
-      document.addEventListener('mousemove', this._boundMouseMove);
-      document.addEventListener('mouseup', this._boundMouseUp);
+      this._pendingBottom = Math.min(pct, topP);
     }
+    this._updateSlider();
+
+    document.addEventListener('mousemove', this._onMove);
+    document.addEventListener('mouseup', this._onEnd);
+    document.addEventListener('touchmove', this._onMove, { passive: false });
+    document.addEventListener('touchend', this._onEnd);
   }
 
-  _onMouseMove(e) { this._drag(e); }
-  _onTouchMove(e) { e.preventDefault(); this._drag(e); }
-
-  _drag(e) {
+  _onMove(e) {
     if (!this._dragging) return;
-    const pct = this._pctFromEvent(e);
-    if (pct === null) return;
-
+    if (e.cancelable) e.preventDefault();
+    const pct = this._pct(e);
     const curTop = this._pendingTop != null ? this._pendingTop : this._pos(this._config.entity_top);
     const curBot = this._pendingBottom != null ? this._pendingBottom : this._pos(this._config.entity_bottom);
 
@@ -161,24 +346,10 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     } else {
       this._pendingBottom = Math.min(pct, curTop);
     }
-    this._updateVisuals();
+    this._updateSlider();
   }
 
-  _onMouseUp() {
-    this._finish();
-    document.removeEventListener('mousemove', this._boundMouseMove);
-    document.removeEventListener('mouseup', this._boundMouseUp);
-  }
-
-  _onTouchEnd() {
-    this._finish();
-    document.removeEventListener('touchmove', this._boundTouchMove);
-    document.removeEventListener('touchend', this._boundTouchEnd);
-  }
-
-  _finish() {
-    const thumb = this.shadowRoot.querySelector(`.cursor-${this._dragging}`);
-    if (thumb) thumb.classList.remove('active');
+  _onEnd() {
     if (this._dragging === 'top' && this._pendingTop != null) {
       this._call(this._config.entity_top, 'set_cover_position', { position: Math.round(this._pendingTop) });
     }
@@ -188,384 +359,68 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     this._pendingTop = null;
     this._pendingBottom = null;
     this._dragging = null;
+
+    document.removeEventListener('mousemove', this._onMove);
+    document.removeEventListener('mouseup', this._onEnd);
+    document.removeEventListener('touchmove', this._onMove);
+    document.removeEventListener('touchend', this._onEnd);
   }
 
-  _updateVisuals() {
+  // ---- Update ----
+
+  _updateSlider() {
     const topP = this._pendingTop != null ? this._pendingTop : this._pos(this._config.entity_top);
     const botP = this._pendingBottom != null ? this._pendingBottom : this._pos(this._config.entity_bottom);
+    const e = this._els;
+    if (!e) return;
 
-    const sr = this.shadowRoot;
-    const cursorTop = sr.querySelector('.cursor-top');
-    const cursorBot = sr.querySelector('.cursor-bottom');
-    const fillTop = sr.querySelector('.fill-top');
-    const fillBot = sr.querySelector('.fill-bottom');
-    const tipTop = sr.querySelector('.tooltip-top');
-    const tipBot = sr.querySelector('.tooltip-bottom');
-    const tipWrapTop = sr.querySelector('.tooltip-wrap-top');
-    const tipWrapBot = sr.querySelector('.tooltip-wrap-bottom');
-    const stateEl = sr.querySelector('.secondary');
+    // Position cursors (center the 10px cursor on the percentage)
+    e.curTop.style.left = `calc(${topP}% - 5px)`;
+    e.curBot.style.left = `calc(${botP}% - 5px)`;
 
-    if (cursorTop) cursorTop.style.left = `${topP}%`;
-    if (cursorBot) cursorBot.style.left = `${botP}%`;
-    if (fillTop) { fillTop.style.left = `${topP}%`; fillTop.style.width = `${100 - topP}%`; }
-    if (fillBot) { fillBot.style.width = `${botP}%`; }
-    if (tipTop) tipTop.textContent = `${Math.round(topP)}%`;
-    if (tipBot) tipBot.textContent = `${Math.round(botP)}%`;
-    if (tipWrapTop) { tipWrapTop.style.left = `${topP}%`; tipWrapTop.classList.toggle('active', this._dragging === 'top'); }
-    if (tipWrapBot) { tipWrapBot.style.left = `${botP}%`; tipWrapBot.classList.toggle('active', this._dragging === 'bottom'); }
-    if (stateEl) stateEl.textContent = `Top ${Math.round(topP)}% · Bottom ${Math.round(botP)}%`;
+    // Fills
+    e.fillBot.style.width = `${botP}%`;
+    e.fillTop.style.width = `${100 - topP}%`;
+    e.fillMid.style.left = `${botP}%`;
+    e.fillMid.style.width = `${Math.max(0, topP - botP)}%`;
+
+    // Labels
+    e.lblTop.textContent = `${Math.round(topP)}%`;
+    e.lblBot.textContent = `${Math.round(botP)}%`;
+
+    // State text
+    const showState = this._config.show_state !== false;
+    if (showState) {
+      const unavail = this._state(this._config.entity_top) === 'unavailable' ||
+                      this._state(this._config.entity_bottom) === 'unavailable';
+      e.state.textContent = unavail ? 'Unavailable' : `Top ${Math.round(topP)}% · Bottom ${Math.round(botP)}%`;
+    }
   }
 
-  _render() {
-    if (!this._hass || !this._config) return;
-
+  _update() {
+    if (!this._built || !this._hass || !this._config) return;
     const cfg = this._config;
-    const topP = this._pos(cfg.entity_top);
-    const botP = this._pos(cfg.entity_bottom);
-    const icon = cfg.icon || 'mdi:blinds-horizontal';
-    const name = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor).*$/i, '').trim() || 'Honeycomb Blind';
-    const topState = this._state(cfg.entity_top);
-    const botState = this._state(cfg.entity_bottom);
-    const showState = cfg.show_state !== false;
-    const unavail = topState === 'unavailable' || botState === 'unavailable';
+    const e = this._els;
+    const unavail = this._state(cfg.entity_top) === 'unavailable' || this._state(cfg.entity_bottom) === 'unavailable';
 
-    let stateText = '';
-    if (showState) {
-      stateText = unavail ? 'Unavailable' : `Top ${Math.round(topP)}% · Bottom ${Math.round(botP)}%`;
-    }
+    // Icon
+    e.icon.setAttribute('icon', cfg.icon || 'mdi:blinds-horizontal');
+    e.iconWrap.classList.toggle('off', unavail);
 
-    this.shadowRoot.innerHTML = `
-      <style>
-        :host {
-          display: block;
-        }
-        ha-card {
-          --tile-color: var(--state-cover-active-color, var(--state-cover-color, rgb(189, 157, 255)));
-          height: 100%;
-          overflow: hidden;
-          padding: 0;
-        }
+    // Name
+    const rawName = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor).*$/i, '').trim() || 'Honeycomb Blind';
+    e.name.textContent = rawName;
 
-        /* Main layout - matches ha-tile-container */
-        .tile-container {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          min-height: 0;
-        }
+    // State
+    e.state.style.display = cfg.show_state !== false ? '' : 'none';
 
-        /* Top content row: icon + info + buttons */
-        .content {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 10px;
-          padding: 10px;
-          min-height: 56px;
-        }
+    // Buttons
+    e.stopBtn.disabled = unavail;
+    e.openBtn.disabled = unavail;
+    e.closeBtn.disabled = unavail;
 
-        /* Icon - matches ha-tile-icon */
-        .icon-holder {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          overflow: hidden;
-          flex-shrink: 0;
-          transition: transform 180ms ease-in-out;
-          --mdc-icon-size: 24px;
-          color: var(--tile-color);
-        }
-        .icon-holder::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          background: var(--tile-color);
-          opacity: 0.2;
-        }
-        .icon-holder.unavailable {
-          color: rgb(var(--rgb-disabled, 189, 189, 189));
-        }
-        .icon-holder.unavailable::before {
-          background: rgb(var(--rgb-disabled, 189, 189, 189));
-        }
-
-        /* Info - matches ha-tile-info */
-        .info {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-        }
-        .primary {
-          font-weight: 500;
-          font-size: 14px;
-          line-height: 20px;
-          color: var(--primary-text-color);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .secondary {
-          font-weight: 400;
-          font-size: 12px;
-          line-height: 16px;
-          color: var(--secondary-text-color);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        /* Buttons */
-        .actions {
-          display: flex;
-          flex-shrink: 0;
-          gap: 2px;
-        }
-        .actions button {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 20px;
-          border: none;
-          background: none;
-          cursor: pointer;
-          color: var(--secondary-text-color);
-          --mdc-icon-size: 20px;
-          padding: 0;
-          transition: background 0.15s;
-        }
-        .actions button:hover {
-          background: rgba(127, 127, 127, 0.15);
-        }
-        .actions button:disabled {
-          color: var(--disabled-color);
-          cursor: default;
-        }
-        .actions button:disabled:hover {
-          background: none;
-        }
-
-        /* Features section - matches hui-card-features */
-        .features {
-          display: flex;
-          flex-direction: column;
-          padding: 0 12px 12px 12px;
-          gap: 12px;
-        }
-
-        /* Open/Close buttons row */
-        .control-buttons {
-          display: flex;
-          flex-direction: row;
-          gap: 8px;
-        }
-        .control-buttons button {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          height: 42px;
-          border-radius: 12px;
-          border: none;
-          background: rgba(127, 127, 127, 0.15);
-          cursor: pointer;
-          color: var(--primary-text-color);
-          --mdc-icon-size: 20px;
-          padding: 0;
-          transition: background 0.15s;
-        }
-        .control-buttons button:hover {
-          background: rgba(127, 127, 127, 0.25);
-        }
-        .control-buttons button:disabled {
-          opacity: 0.4;
-          cursor: default;
-        }
-
-        /* Dual slider - styled like ha-control-slider */
-        .slider-wrapper {
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-        .slider-labels {
-          display: flex;
-          justify-content: space-between;
-          padding: 0 2px;
-        }
-        .slider-label {
-          font-size: 11px;
-          font-weight: 500;
-          color: var(--secondary-text-color);
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-        .slider-label .dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 3px;
-        }
-        .slider-label .dot.top { background: var(--tile-color); }
-        .slider-label .dot.bottom { background: var(--primary-color, #03a9f4); }
-
-        .slider-outer {
-          position: relative;
-          padding: 0 6px;
-        }
-
-        .slider {
-          position: relative;
-          width: 100%;
-          height: 42px;
-          border-radius: 12px;
-          overflow: hidden;
-          touch-action: none;
-          cursor: pointer;
-        }
-
-        /* Background - light version of tile color */
-        .slider-bg {
-          position: absolute;
-          inset: 0;
-          background: var(--tile-color);
-          opacity: 0.2;
-        }
-
-        /* Top fill: from topP% to 100% */
-        .fill-top {
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          background: var(--tile-color);
-          opacity: 0.5;
-          pointer-events: none;
-        }
-
-        /* Bottom fill: from 0% to botP% */
-        .fill-bottom {
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          left: 0;
-          background: var(--primary-color, #03a9f4);
-          opacity: 0.4;
-          pointer-events: none;
-        }
-
-        /* Cursors - positioned OUTSIDE .slider overflow:hidden so they aren't clipped */
-        .cursor {
-          position: absolute;
-          top: 0;
-          width: 12px;
-          height: 42px;
-          border-radius: 4px;
-          background: white;
-          transform: translateX(-50%);
-          cursor: grab;
-          touch-action: none;
-          z-index: 2;
-          transition: left 0.2s ease;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-          /* Make grab area bigger than visual */
-          box-sizing: content-box;
-          padding: 0 8px;
-          background-clip: content-box;
-        }
-        .cursor.active {
-          transition: none;
-          cursor: grabbing;
-        }
-
-        /* Tooltip */
-        .tooltip-wrap {
-          position: absolute;
-          top: -26px;
-          transform: translateX(-50%);
-          z-index: 3;
-          pointer-events: none;
-          opacity: 0;
-          transition: opacity 0.15s, left 0.2s ease;
-        }
-        .tooltip-wrap.active {
-          opacity: 1;
-          transition: opacity 0.15s;
-        }
-        .tooltip {
-          background: var(--card-background-color, rgb(46, 48, 56));
-          color: var(--primary-text-color);
-          font-size: 11px;
-          font-weight: 500;
-          padding: 2px 8px;
-          border-radius: 12px;
-          white-space: nowrap;
-          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        }
-      </style>
-      <ha-card>
-        <div class="tile-container">
-          <div class="content">
-            <div class="icon-holder${unavail ? ' unavailable' : ''}">
-              <ha-icon icon="${icon}"></ha-icon>
-            </div>
-            <div class="info">
-              <span class="primary">${name}</span>
-              ${showState ? `<span class="secondary">${stateText}</span>` : ''}
-            </div>
-            <div class="actions">
-              <button id="btn-stop" title="Stop"${unavail ? ' disabled' : ''}>
-                <ha-icon icon="mdi:stop"></ha-icon>
-              </button>
-            </div>
-          </div>
-          <div class="features">
-            <div class="control-buttons">
-              <button id="btn-open"${unavail ? ' disabled' : ''}><ha-icon icon="mdi:arrow-collapse-up"></ha-icon></button>
-              <button id="btn-close"${unavail ? ' disabled' : ''}><ha-icon icon="mdi:arrow-collapse-down"></ha-icon></button>
-            </div>
-            <div class="slider-wrapper">
-              <div class="slider-outer">
-                <div class="slider" id="slider">
-                  <div class="slider-bg"></div>
-                  <div class="fill-bottom" style="width:${botP}%"></div>
-                  <div class="fill-top" style="left:${topP}%;width:${100 - topP}%"></div>
-                </div>
-                <div class="cursor cursor-top" style="left:${topP}%"></div>
-                <div class="tooltip-wrap tooltip-wrap-top" style="left:${topP}%"><span class="tooltip tooltip-top">${Math.round(topP)}%</span></div>
-                <div class="cursor cursor-bottom" style="left:${botP}%"></div>
-                <div class="tooltip-wrap tooltip-wrap-bottom" style="left:${botP}%"><span class="tooltip tooltip-bottom">${Math.round(botP)}%</span></div>
-              </div>
-              <div class="slider-labels">
-                <div class="slider-label"><span class="dot bottom"></span>Bottom</div>
-                <div class="slider-label"><span class="dot top"></span>Top</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </ha-card>
-    `;
-
-    if (!unavail) {
-      this.shadowRoot.getElementById('btn-open').addEventListener('click', () => this._handleOpen());
-      this.shadowRoot.getElementById('btn-close').addEventListener('click', () => this._handleClose());
-      this.shadowRoot.getElementById('btn-stop').addEventListener('click', () => this._handleStop());
-
-      const ct = this.shadowRoot.querySelector('.cursor-top');
-      const cb = this.shadowRoot.querySelector('.cursor-bottom');
-      ct.addEventListener('mousedown', (e) => this._onThumbDown('top', e));
-      ct.addEventListener('touchstart', (e) => this._onThumbDown('top', e), { passive: false });
-      cb.addEventListener('mousedown', (e) => this._onThumbDown('bottom', e));
-      cb.addEventListener('touchstart', (e) => this._onThumbDown('bottom', e), { passive: false });
-    }
+    // Slider
+    this._updateSlider();
   }
 }
 
@@ -575,13 +430,13 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'honeycomb-blinds-slider-card',
   name: 'Honeycomb Blinds Slider Card',
-  description: 'A card for plisse/honeycomb blinds with dual motors and a dual-thumb slider.',
+  description: 'A card for plisse/honeycomb blinds with dual motors and dual-thumb slider.',
   preview: true,
   documentationURL: 'https://github.com/christianvaes/honeycomb-blinds-slider-card',
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v${CARD_VERSION} `,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.1.0 `,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
