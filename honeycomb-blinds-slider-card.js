@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.4.0
+ * @version 1.4.1
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -295,10 +295,10 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const topHA = this._toHA('top', topS);
     const botHA = this._toHA('bottom', botS);
 
-    // Cursor handles positioned at their slider percentage
-    // Native uses right: Xpx with 5.25px offset. We use left with calc.
-    e.curTop.style.left = `calc(${topS}% - 7.25px)`;
-    e.curBot.style.left = `calc(${botS}% - 7.25px)`;
+    // Cursor: at 0% → left:0, at 100% → right edge minus cursor width
+    // Use calc to interpolate: left = X% - X/100 * 4px
+    e.curTop.style.left = `calc(${topS}% - ${topS * 4 / 100}px)`;
+    e.curBot.style.left = `calc(${botS}% - ${botS * 4 / 100}px)`;
 
     // Fill = fabric area between the two cursors
     const left = Math.min(topS, botS);
@@ -331,7 +331,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const cfg = this._config;
     const e = this._els;
     const unavail = this._state(cfg.entity_top) === 'unavailable' || this._state(cfg.entity_bottom) === 'unavailable';
-    e.icon.setAttribute('icon', cfg.icon || 'mdi:blinds-horizontal');
+    // Use configured icon, entity icon, or derive from device_class
+    const topState = this._hass.states[cfg.entity_top];
+    const deviceClass = topState?.attributes?.device_class || '';
+    const entityIcon = topState?.attributes?.icon;
+    const isClosed = topState?.state === 'closed';
+    let defaultIcon = 'mdi:blinds-horizontal';
+    if (deviceClass === 'shade') defaultIcon = isClosed ? 'mdi:roller-shade-closed' : 'mdi:roller-shade';
+    else if (deviceClass === 'blind') defaultIcon = isClosed ? 'mdi:blinds-horizontal-closed' : 'mdi:blinds-horizontal';
+    else if (deviceClass === 'curtain') defaultIcon = isClosed ? 'mdi:curtains-closed' : 'mdi:curtains';
+    else if (deviceClass === 'shutter') defaultIcon = isClosed ? 'mdi:window-shutter' : 'mdi:window-shutter-open';
+    e.icon.setAttribute('icon', cfg.icon || entityIcon || defaultIcon);
     e.iconWrap.classList.toggle('off', unavail);
     e.name.textContent = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor|bovenkant).*$/i, '').trim() || 'Honeycomb Blind';
     e.state.style.display = cfg.show_state !== false ? '' : 'none';
@@ -354,7 +364,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.1`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
