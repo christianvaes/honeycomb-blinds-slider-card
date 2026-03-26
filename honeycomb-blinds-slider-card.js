@@ -1,9 +1,9 @@
 /**
  * Honeycomb Blinds Slider Card
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
- * Styled to match the native HA tile card.
+ * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.3.3
+ * @version 1.4.0
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -55,7 +55,6 @@ class HoneycombBlindsSliderCard extends HTMLElement {
 
   getCardSize() { return 2; }
 
-  // HA position: 0=closed, 100=open
   _haPos(eid) {
     const s = this._hass?.states[eid];
     if (!s) return 0;
@@ -64,14 +63,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   }
 
   // Slider: left=top of window, right=bottom of window
-  // Top motor: HA 0% (rail at top) → slider 0% (left). HA 100% → slider right.
-  // Bottom motor: INVERTED. HA 0% (rail at bottom) → slider 100% (right). HA 100% → slider 0% (left).
-  _toSlider(which, haPos) {
-    return which === 'bottom' ? 100 - haPos : haPos;
-  }
-  _toHA(which, sliderPos) {
-    return which === 'bottom' ? 100 - sliderPos : sliderPos;
-  }
+  // Top motor: HA 0% → slider 0% (left). Bottom motor: INVERTED, HA 0% → slider 100% (right).
+  _toSlider(which, haPos) { return which === 'bottom' ? 100 - haPos : haPos; }
+  _toHA(which, sliderPos) { return which === 'bottom' ? 100 - sliderPos : sliderPos; }
 
   _name(eid) { return this._hass?.states[eid]?.attributes?.friendly_name || eid; }
   _state(eid) { return this._hass?.states[eid]?.state || 'unavailable'; }
@@ -87,10 +81,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         }
         .wrap { display: flex; flex-direction: column; height: 100%; }
 
-        /* Header: icon + name/state (matches ha-tile-container .content) */
-        .header {
-          display: flex; align-items: center; gap: 10px; padding: 10px;
-        }
+        /* Header */
+        .header { display: flex; align-items: center; gap: 10px; padding: 10px; }
         .icon-wrap {
           position: relative; display: flex; align-items: center; justify-content: center;
           width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
@@ -114,58 +106,54 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
 
-        /* Features (matches hui-card-features) */
+        /* Features */
         .features { display: flex; flex-direction: column; padding: 0 12px 12px; gap: 12px; }
 
-        /* Open/Stop/Close row (matches ha-control-button-group: 12px gap between buttons) */
+        /* Buttons: 12px gap, each has ::before bg rgb(61,65,85) at 0.2, color rgb(228,228,231) */
         .btn-row { display: flex; height: 42px; gap: 12px; }
         .btn-row button {
           flex: 1; display: flex; align-items: center; justify-content: center;
           height: 42px; border: none; background: none; cursor: pointer;
-          color: var(--primary-text-color); --mdc-icon-size: 20px; padding: 0;
+          color: rgb(228, 228, 231); --mdc-icon-size: 20px; padding: 0;
           border-radius: 12px; position: relative; overflow: hidden;
         }
-        /* Native ha-control-button has ::before with bg at 0.2 opacity */
         .btn-row button::before {
           content: ''; position: absolute; inset: 0;
-          background: var(--primary-text-color); opacity: 0.05; border-radius: 12px;
+          background: rgb(61, 65, 85); opacity: 0.2;
         }
-        .btn-row button:hover::before { opacity: 0.1; }
-        .btn-row button:active::before { opacity: 0.15; }
+        .btn-row button:hover::before { opacity: 0.3; }
+        .btn-row button:active::before { opacity: 0.4; }
         .btn-row button:disabled { opacity: 0.3; cursor: default; }
-        .btn-row button:disabled:hover::before { opacity: 0.05; }
+        .btn-row button:disabled:hover::before { opacity: 0.2; }
 
-        /* Slider track (matches ha-control-slider .slider) */
+        /* Slider track */
         .slider {
           position: relative; width: 100%; height: 42px;
           border-radius: 12px; overflow: hidden;
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
-        /* Track background (same as native .slider-track-background) */
+        /* Background: tile-color at 0.2 (same as native .slider-track-background) */
         .slider-bg {
           position: absolute; inset: 0;
           background: var(--tile-color); opacity: 0.2;
         }
-        /* Fill between cursors = fabric area. Extra layer on top of bg to make it stand out. */
+        /* Fill between cursors = fabric. Full tile-color, like the native track-bar */
         .fill {
           position: absolute; top: 0; bottom: 0;
-          background: var(--tile-color); opacity: 0.3;
+          background: var(--tile-color);
           pointer-events: none;
         }
-        /* Cursor (matches .slider-track-cursor exactly) */
+        /* Cursor handle: native is ::after on track-bar, 4px wide, 21px tall, white, border-radius 4px */
         .cur {
-          position: absolute; top: 0;
-          width: 10.5px; height: 42px; border-radius: 4px;
+          position: absolute; top: 50%; transform: translateY(-50%);
+          width: 4px; height: 21px; border-radius: 4px;
           background: rgb(255, 255, 255);
-          box-shadow: 0px 2px 5px 0px rgba(0, 0, 0, 0.2);
           pointer-events: none; z-index: 2;
         }
 
-        /* Labels below slider */
-        .slider-labels {
-          display: flex; justify-content: space-between; padding: 2px 2px 0;
-        }
+        /* Labels */
+        .slider-labels { display: flex; justify-content: space-between; padding: 2px 2px 0; }
         .slider-label {
           font-size: 11px; font-weight: 500; color: var(--secondary-text-color);
           display: flex; align-items: center; gap: 4px;
@@ -235,7 +223,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (this._hass) this._update();
   }
 
-  // ---- Slider interaction ----
+  // ---- Slider ----
 
   _pct(e) {
     const r = this._els.slider.getBoundingClientRect();
@@ -248,13 +236,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const pct = this._pct(e);
     const topS = this._getSliderPos('top');
     const botS = this._getSliderPos('bottom');
-
     this._dragging = Math.abs(pct - topS) <= Math.abs(pct - botS) ? 'top' : 'bottom';
-
-    if (this._dragging === 'top') this._pendingTop = pct;
-    else this._pendingBottom = pct;
+    if (this._dragging === 'top') this._pendingTop = pct; else this._pendingBottom = pct;
     this._updateSlider();
-
     document.addEventListener('mousemove', this._onMove);
     document.addEventListener('mouseup', this._onEnd);
     document.addEventListener('touchmove', this._onMove, { passive: false });
@@ -265,8 +249,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (!this._dragging) return;
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
-    if (this._dragging === 'top') this._pendingTop = pct;
-    else this._pendingBottom = pct;
+    if (this._dragging === 'top') this._pendingTop = pct; else this._pendingBottom = pct;
     this._updateSlider();
   }
 
@@ -288,16 +271,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     document.removeEventListener('touchend', this._onEnd);
   }
 
-  // Get current slider position for a motor, considering pending/target/actual
   _getSliderPos(which) {
     const pending = which === 'top' ? this._pendingTop : this._pendingBottom;
     if (pending != null) return pending;
-
     const target = which === 'top' ? this._targetTop : this._targetBot;
-    const haSlider = this._toSlider(which, this._haPos(
-      which === 'top' ? this._config.entity_top : this._config.entity_bottom
-    ));
-
+    const eid = which === 'top' ? this._config.entity_top : this._config.entity_bottom;
+    const haSlider = this._toSlider(which, this._haPos(eid));
     if (target != null) {
       if (Math.abs(haSlider - target) < 2) {
         if (which === 'top') this._targetTop = null; else this._targetBot = null;
@@ -311,18 +290,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   _updateSlider() {
     const e = this._els;
     if (!e) return;
-
     const topS = this._getSliderPos('top');
     const botS = this._getSliderPos('bottom');
     const topHA = this._toHA('top', topS);
     const botHA = this._toHA('bottom', botS);
 
-    // Position cursors within the track using calc to keep within bounds
-    // At 0%: left edge (left: 0). At 100%: right edge minus cursor width (left: 100% - 10.5px)
-    e.curTop.style.left = `calc(${topS}% - ${topS * 10.5 / 100}px)`;
-    e.curBot.style.left = `calc(${botS}% - ${botS * 10.5 / 100}px)`;
+    // Cursor handles positioned at their slider percentage
+    // Native uses right: Xpx with 5.25px offset. We use left with calc.
+    e.curTop.style.left = `calc(${topS}% - 7.25px)`;
+    e.curBot.style.left = `calc(${botS}% - 7.25px)`;
 
-    // Fill between cursors
+    // Fill = fabric area between the two cursors
     const left = Math.min(topS, botS);
     const right = Math.max(topS, botS);
     e.fill.style.left = `${left}%`;
@@ -332,15 +310,15 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     e.lblTop.textContent = `${Math.round(topHA)}%`;
     e.lblBot.textContent = `${Math.round(botHA)}%`;
 
-    // State text
+    // State
     if (this._config.show_state !== false && this._hass) {
-      const topState = this._state(this._config.entity_top);
-      const botState = this._state(this._config.entity_bottom);
-      if (topState === 'unavailable' || botState === 'unavailable') {
+      const ts = this._state(this._config.entity_top);
+      const bs = this._state(this._config.entity_bottom);
+      if (ts === 'unavailable' || bs === 'unavailable') {
         e.state.textContent = this._hass.localize?.('state.default.unavailable') || 'Unavailable';
-      } else if (topState === 'closed' && botState === 'closed') {
+      } else if (ts === 'closed' && bs === 'closed') {
         e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.closed') || 'Closed';
-      } else if (topState === 'open' && botState === 'open' && topHA >= 99 && botHA >= 99) {
+      } else if (ts === 'open' && bs === 'open' && topHA >= 99 && botHA >= 99) {
         e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.open') || 'Open';
       } else {
         e.state.textContent = `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
@@ -353,7 +331,6 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const cfg = this._config;
     const e = this._els;
     const unavail = this._state(cfg.entity_top) === 'unavailable' || this._state(cfg.entity_bottom) === 'unavailable';
-
     e.icon.setAttribute('icon', cfg.icon || 'mdi:blinds-horizontal');
     e.iconWrap.classList.toggle('off', unavail);
     e.name.textContent = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor|bovenkant).*$/i, '').trim() || 'Honeycomb Blind';
@@ -377,7 +354,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.3`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
