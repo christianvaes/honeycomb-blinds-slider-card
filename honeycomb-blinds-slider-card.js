@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.4.5
+ * @version 1.5.0
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -235,13 +235,42 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     return Math.max(0, Math.min(100, (x / r.width) * 100));
   }
 
+  // Get raw slider position for a motor (may be crossed)
+  _getRawSliderPos(which) {
+    const pending = which === 'top' ? this._pendingTop : this._pendingBottom;
+    if (pending != null) return pending;
+    const target = which === 'top' ? this._targetTop : this._targetBot;
+    const eid = which === 'top' ? this._config.entity_top : this._config.entity_bottom;
+    const haSlider = this._toSlider(which, this._haPos(eid));
+    if (target != null) {
+      if (Math.abs(haSlider - target) < 2) {
+        if (which === 'top') this._targetTop = null; else this._targetBot = null;
+        return haSlider;
+      }
+      return target;
+    }
+    return haSlider;
+  }
+
+  // Get constrained slider positions: top is ALWAYS <= bottom (no crossing)
+  _getConstrainedPositions() {
+    let topS = this._getRawSliderPos('top');
+    let botS = this._getRawSliderPos('bottom');
+    // Prevent crossing: if top > bottom, clamp them to meet
+    if (topS > botS) {
+      const mid = (topS + botS) / 2;
+      topS = mid;
+      botS = mid;
+    }
+    return { topS, botS };
+  }
+
   _onStart(e) {
     e.preventDefault();
     const pct = this._pct(e);
-    const topS = this._getSliderPos('top');
-    const botS = this._getSliderPos('bottom');
+    const { topS, botS } = this._getConstrainedPositions();
     this._dragging = Math.abs(pct - topS) <= Math.abs(pct - botS) ? 'top' : 'bottom';
-    // Clamp so top stays left of (or equal to) bottom in slider space
+    // Clamp so top stays left of (or equal to) bottom
     if (this._dragging === 'top') this._pendingTop = Math.min(pct, botS);
     else this._pendingBottom = Math.max(pct, topS);
     this._updateSlider();
@@ -255,9 +284,15 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (!this._dragging) return;
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
-    const otherPos = this._dragging === 'top' ? this._getSliderPos('bottom') : this._getSliderPos('top');
-    if (this._dragging === 'top') this._pendingTop = Math.min(pct, otherPos);
-    else this._pendingBottom = Math.max(pct, otherPos);
+    // Get constrained position of the OTHER thumb
+    const { topS, botS } = this._getConstrainedPositions();
+    if (this._dragging === 'top') {
+      // Top cannot go past bottom's constrained position
+      this._pendingTop = Math.min(pct, botS);
+    } else {
+      // Bottom cannot go past top's constrained position
+      this._pendingBottom = Math.max(pct, topS);
+    }
     this._updateSlider();
   }
 
@@ -279,45 +314,21 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     document.removeEventListener('touchend', this._onEnd);
   }
 
-  _getSliderPos(which) {
-    const pending = which === 'top' ? this._pendingTop : this._pendingBottom;
-    if (pending != null) return pending;
-    const target = which === 'top' ? this._targetTop : this._targetBot;
-    const eid = which === 'top' ? this._config.entity_top : this._config.entity_bottom;
-    const haSlider = this._toSlider(which, this._haPos(eid));
-    if (target != null) {
-      if (Math.abs(haSlider - target) < 2) {
-        if (which === 'top') this._targetTop = null; else this._targetBot = null;
-        return haSlider;
-      }
-      return target;
-    }
-    return haSlider;
-  }
-
   _updateSlider() {
     const e = this._els;
     if (!e) return;
-    const topS = this._getSliderPos('top');
-    const botS = this._getSliderPos('bottom');
+    // Always use constrained positions so cursors never cross
+    const { topS, botS } = this._getConstrainedPositions();
     const topHA = this._toHA('top', topS);
     const botHA = this._toHA('bottom', botS);
 
     // Fill = fabric area between the two cursor positions
-    const left = Math.min(topS, botS);
-    const right = Math.max(topS, botS);
-    e.fill.style.left = `${left}%`;
-    e.fill.style.width = `${right - left}%`;
+    e.fill.style.left = `${topS}%`;
+    e.fill.style.width = `${botS - topS}%`;
 
-    // Cursors are children of fill, fixed at 5.25px from each edge via CSS
-    // Swap classes so top cursor is on the correct side
-    if (topS <= botS) {
-      e.curTop.className = 'cur cur-left';
-      e.curBot.className = 'cur cur-right';
-    } else {
-      e.curTop.className = 'cur cur-right';
-      e.curBot.className = 'cur cur-left';
-    }
+    // Cursors: top is always left, bottom is always right
+    e.curTop.className = 'cur cur-left';
+    e.curBot.className = 'cur cur-right';
 
     // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
@@ -377,7 +388,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.5`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.5.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
