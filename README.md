@@ -2,6 +2,10 @@
 
 A custom [Home Assistant](https://www.home-assistant.io/) Lovelace card for controlling plisse/honeycomb blinds with **dual motors**. It provides a dual-thumb slider to independently control the top and bottom cover positions.
 
+## Screenshot
+
+![Config Editor](screenshots/config-editor.png)
+
 ## Features
 
 - Dual-thumb slider on a single track (top motor + bottom motor)
