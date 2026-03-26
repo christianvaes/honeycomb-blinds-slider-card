@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.4.1
+ * @version 1.4.2
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -109,13 +109,14 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         /* Features */
         .features { display: flex; flex-direction: column; padding: 0 12px 12px; gap: 12px; }
 
-        /* Buttons: 12px gap, each has ::before bg rgb(61,65,85) at 0.2, color rgb(228,228,231) */
+        /* Buttons: native ha-control-button = 100px wide, 12px gap, flex: 1 to fill evenly */
         .btn-row { display: flex; height: 42px; gap: 12px; }
         .btn-row button {
-          flex: 1; display: flex; align-items: center; justify-content: center;
+          flex: 1 1 0; display: flex; align-items: center; justify-content: center;
           height: 42px; border: none; background: none; cursor: pointer;
           color: rgb(228, 228, 231); --mdc-icon-size: 20px; padding: 0;
           border-radius: 12px; position: relative; overflow: hidden;
+          min-width: 0;
         }
         .btn-row button::before {
           content: ''; position: absolute; inset: 0;
@@ -364,7 +365,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.1`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.2`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
