@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.3.1
+ * @version 1.3.2
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -117,8 +117,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         /* Features (matches hui-card-features) */
         .features { display: flex; flex-direction: column; padding: 0 12px 12px; gap: 12px; }
 
-        /* Open/Stop/Close row (matches ha-control-button-group + ha-control-button) */
-        .btn-row { display: flex; height: 42px; }
+        /* Open/Stop/Close row (matches ha-control-button-group: 12px gap between buttons) */
+        .btn-row { display: flex; height: 42px; gap: 12px; }
         .btn-row button {
           flex: 1; display: flex; align-items: center; justify-content: center;
           height: 42px; border: none; background: none; cursor: pointer;
@@ -142,15 +142,15 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
-        /* Track background (matches .slider-track-background: color at 0.2 opacity) */
+        /* Track background (same as native .slider-track-background) */
         .slider-bg {
           position: absolute; inset: 0;
           background: var(--tile-color); opacity: 0.2;
         }
-        /* Fill between cursors = fabric covering the window */
+        /* Fill between cursors = fabric area. Extra layer on top of bg to make it stand out. */
         .fill {
           position: absolute; top: 0; bottom: 0;
-          background: var(--tile-color); opacity: 0.5;
+          background: var(--tile-color); opacity: 0.3;
           pointer-events: none;
         }
         /* Cursor (matches .slider-track-cursor exactly) */
@@ -377,7 +377,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.1`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.2`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
