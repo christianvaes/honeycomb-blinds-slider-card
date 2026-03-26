@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.3.0
+ * @version 1.3.1
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -82,7 +82,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       <style>
         :host { display: block; }
         ha-card {
-          --tile-color: var(--state-cover-active-color, var(--state-cover-color, rgb(189, 157, 255)));
+          --tile-color: var(--state-cover-closed-color, var(--state-cover-inactive-color, var(--state-inactive-color)));
           height: 100%; padding: 0;
         }
         .wrap { display: flex; flex-direction: column; height: 100%; }
@@ -123,12 +123,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           flex: 1; display: flex; align-items: center; justify-content: center;
           height: 42px; border: none; background: none; cursor: pointer;
           color: var(--primary-text-color); --mdc-icon-size: 20px; padding: 0;
-          border-radius: 12px; opacity: 0.8;
+          border-radius: 12px; position: relative; overflow: hidden;
         }
-        .btn-row button:hover { background: rgba(127, 127, 127, 0.12); }
-        .btn-row button:active { opacity: 1; }
+        /* Native ha-control-button has ::before with bg at 0.2 opacity */
+        .btn-row button::before {
+          content: ''; position: absolute; inset: 0;
+          background: var(--primary-text-color); opacity: 0.05; border-radius: 12px;
+        }
+        .btn-row button:hover::before { opacity: 0.1; }
+        .btn-row button:active::before { opacity: 0.15; }
         .btn-row button:disabled { opacity: 0.3; cursor: default; }
-        .btn-row button:disabled:hover { background: none; }
+        .btn-row button:disabled:hover::before { opacity: 0.05; }
 
         /* Slider track (matches ha-control-slider .slider) */
         .slider {
@@ -137,15 +142,15 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
-        /* Track background (matches .slider-track-background) */
+        /* Track background (matches .slider-track-background: color at 0.2 opacity) */
         .slider-bg {
           position: absolute; inset: 0;
           background: var(--tile-color); opacity: 0.2;
         }
-        /* Fill between cursors = fabric */
+        /* Fill between cursors = fabric covering the window */
         .fill {
           position: absolute; top: 0; bottom: 0;
-          background: var(--tile-color); opacity: 0.4;
+          background: var(--tile-color); opacity: 0.5;
           pointer-events: none;
         }
         /* Cursor (matches .slider-track-cursor exactly) */
@@ -372,7 +377,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.3.1`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
