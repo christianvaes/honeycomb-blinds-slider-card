@@ -145,15 +145,13 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           background: var(--tile-color);
           pointer-events: none;
         }
-        /* Cursor handle: native is ::after on track-bar, 4px wide, 21px tall, centered vertically, 5.25px from edge */
+        /* Cursor handle: 4px wide, 21px tall, centered vertically, positioned via JS */
         .cur {
           position: absolute; top: 50%; transform: translateY(-50%);
           width: 4px; height: 21px; border-radius: 4px;
           background: rgb(255, 255, 255);
           pointer-events: none; z-index: 2;
         }
-        .cur-left { left: 5.25px; }
-        .cur-right { right: 5.25px; }
 
         /* Labels */
         .slider-labels { display: flex; justify-content: space-between; padding: 2px 2px 0; }
@@ -183,10 +181,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
             <div>
               <div class="slider" id="slider">
                 <div class="slider-bg"></div>
-                <div class="fill" id="fill">
-                  <div class="cur cur-left" id="curTop"></div>
-                  <div class="cur cur-right" id="curBot"></div>
-                </div>
+                <div class="fill" id="fill"></div>
+                <div class="cur" id="curTop"></div>
+                <div class="cur" id="curBot"></div>
               </div>
               <div class="slider-labels">
                 <div class="slider-label"><span class="dot dot-top"></span>Top <span id="lblTop"></span></div>
@@ -326,9 +323,23 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     e.fill.style.left = `${topS}%`;
     e.fill.style.width = `${botS - topS}%`;
 
-    // Cursors: top is always left, bottom is always right
-    e.curTop.className = 'cur cur-left';
-    e.curBot.className = 'cur cur-right';
+    // Position cursors directly in the slider track (not inside fill)
+    // to prevent visual crossing when fill is narrow.
+    // Native HA places the cursor 5.25px inward from the fill edge.
+    // We compute pixel positions and ensure they never visually cross.
+    const sliderW = e.slider.offsetWidth || 1;
+    const INSET = 5.25;
+    const CUR_W = 4;
+    let topCurPx = (topS / 100) * sliderW + INSET;         // inset from left edge of fill
+    let botCurPx = (botS / 100) * sliderW - INSET - CUR_W;  // inset from right edge of fill
+    // Prevent visual crossing: ensure top cursor is left of (or equal to) bottom cursor
+    if (topCurPx > botCurPx) {
+      const mid = (topCurPx + botCurPx) / 2;
+      topCurPx = mid;
+      botCurPx = mid;
+    }
+    e.curTop.style.left = `${topCurPx}px`;
+    e.curBot.style.left = `${botCurPx}px`;
 
     // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
@@ -388,7 +399,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.5.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.5.1`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
