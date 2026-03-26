@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.4.3
+ * @version 1.4.4
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -145,13 +145,15 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           background: var(--tile-color);
           pointer-events: none;
         }
-        /* Cursor handle: native is ::after on track-bar, 4px wide, 21px tall, white, border-radius 4px */
+        /* Cursor handle: native is ::after on track-bar, 4px wide, 21px tall, centered vertically, 5.25px from edge */
         .cur {
           position: absolute; top: 50%; transform: translateY(-50%);
           width: 4px; height: 21px; border-radius: 4px;
           background: rgb(255, 255, 255);
           pointer-events: none; z-index: 2;
         }
+        .cur-left { left: 5.25px; }
+        .cur-right { right: 5.25px; }
 
         /* Labels */
         .slider-labels { display: flex; justify-content: space-between; padding: 2px 2px 0; }
@@ -181,9 +183,10 @@ class HoneycombBlindsSliderCard extends HTMLElement {
             <div>
               <div class="slider" id="slider">
                 <div class="slider-bg"></div>
-                <div class="fill" id="fill"></div>
-                <div class="cur" id="curTop"></div>
-                <div class="cur" id="curBot"></div>
+                <div class="fill" id="fill">
+                  <div class="cur cur-left" id="curTop"></div>
+                  <div class="cur cur-right" id="curBot"></div>
+                </div>
               </div>
               <div class="slider-labels">
                 <div class="slider-label"><span class="dot dot-top"></span>Top <span id="lblTop"></span></div>
@@ -296,18 +299,21 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const topHA = this._toHA('top', topS);
     const botHA = this._toHA('bottom', botS);
 
-    // Cursor positioned inside the fill, with 5.25px inset from edge (matching native ::after right:5.25px)
-    // At 0%: left = 5.25px (inset from left edge)
-    // At 100%: left = 100% - 4px - 5.25px (inset from right edge)
-    // Interpolate between these two positions
-    e.curTop.style.left = `calc(${topS}% - ${topS * (4 + 5.25) / 100}px + 5.25px)`;
-    e.curBot.style.left = `calc(${botS}% - ${botS * (4 + 5.25) / 100}px + 5.25px)`;
-
-    // Fill = fabric area between the two cursors
+    // Fill = fabric area between the two cursor positions
     const left = Math.min(topS, botS);
     const right = Math.max(topS, botS);
     e.fill.style.left = `${left}%`;
     e.fill.style.width = `${right - left}%`;
+
+    // Cursors are children of fill, fixed at 5.25px from each edge via CSS
+    // Swap classes so top cursor is on the correct side
+    if (topS <= botS) {
+      e.curTop.className = 'cur cur-left';
+      e.curBot.className = 'cur cur-right';
+    } else {
+      e.curTop.className = 'cur cur-right';
+      e.curBot.className = 'cur cur-left';
+    }
 
     // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
@@ -367,7 +373,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.3`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.4.4`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
