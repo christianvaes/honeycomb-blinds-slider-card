@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card.
  *
- * @version 1.1.1
+ * @version 1.2.0
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -53,12 +53,32 @@ class HoneycombBlindsSliderCard extends HTMLElement {
 
   getCardSize() { return 2; }
 
-  _pos(eid) {
+  // Get HA cover position (0=closed, 100=open)
+  _haPos(eid) {
     const s = this._hass?.states[eid];
     if (!s) return 0;
     const p = s.attributes.current_position;
     return p != null ? p : (s.state === 'open' ? 100 : 0);
   }
+
+  // Convert HA position to slider position (physical window position)
+  // Slider: left = top of window, right = bottom of window
+  // Top motor:    HA 0% (closed, rail at top) → slider 0% (left)
+  //              HA 100% (open, retracted up) → slider 0% (left) — stays at top
+  // Actually top motor moves DOWN when opening: HA 100% → rail moves down → slider right
+  // Bottom motor: HA 0% (closed, rail at bottom) → slider 100% (right)
+  //              HA 100% (open, rail at top) → slider 0% (left)
+  _toSlider(which, haPos) {
+    if (which === 'bottom') return 100 - haPos; // invert: HA 0% → right, HA 100% → left
+    return haPos; // top: HA 0% → left, HA 100% → right
+  }
+
+  // Convert slider position back to HA position for service call
+  _toHA(which, sliderPos) {
+    if (which === 'bottom') return 100 - sliderPos; // invert back
+    return sliderPos;
+  }
+
   _name(eid) { return this._hass?.states[eid]?.attributes?.friendly_name || eid; }
   _state(eid) { return this._hass?.states[eid]?.state || 'unavailable'; }
   _call(eid, svc, data) { this._hass.callService('cover', svc, { entity_id: eid, ...data }); }
@@ -125,16 +145,16 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
-        .fill-bot {
-          position: absolute; top: 0; bottom: 0; left: 0;
+        .fill-top {
+          position: absolute; top: 0; bottom: 0;
           border-radius: 12px 0 0 12px;
-          background: var(--primary-color, #03a9f4); opacity: 0.35;
+          background: var(--tile-color); opacity: 0.35;
           pointer-events: none;
         }
-        .fill-top {
-          position: absolute; top: 0; bottom: 0; right: 0;
+        .fill-bot {
+          position: absolute; top: 0; bottom: 0;
           border-radius: 0 12px 12px 0;
-          background: var(--tile-color); opacity: 0.35;
+          background: var(--primary-color, #03a9f4); opacity: 0.35;
           pointer-events: none;
         }
         .cur {
@@ -177,8 +197,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
                 <div class="cur" id="curTop"></div>
               </div>
               <div class="slider-labels">
-                <div class="slider-label"><span class="dot dot-bot"></span>Bottom <span id="lblBot"></span></div>
-                <div class="slider-label"><span id="lblTop"></span> Top <span class="dot dot-top"></span></div>
+                <div class="slider-label"><span class="dot dot-top"></span>Top <span id="lblTop"></span></div>
+                <div class="slider-label"><span id="lblBot"></span> Bottom <span class="dot dot-bot"></span></div>
               </div>
             </div>
           </div>
@@ -195,17 +215,19 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     };
 
     const cfg = this._config;
+    // Open (up): both rails to top → fully open → both HA 100%
     this._els.openBtn.addEventListener('click', () => {
-      this._call(cfg.entity_top, 'set_cover_position', { position: 100 });
-      this._call(cfg.entity_bottom, 'set_cover_position', { position: 100 });
+      this._call(cfg.entity_top, 'open_cover', {});
+      this._call(cfg.entity_bottom, 'open_cover', {});
     });
     this._els.stopBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'stop_cover', {});
       this._call(cfg.entity_bottom, 'stop_cover', {});
     });
+    // Close (down): top rail at top, bottom rail at bottom → fully closed → both HA 0%
     this._els.closeBtn.addEventListener('click', () => {
-      this._call(cfg.entity_top, 'set_cover_position', { position: 100 });
-      this._call(cfg.entity_bottom, 'set_cover_position', { position: 0 });
+      this._call(cfg.entity_top, 'close_cover', {});
+      this._call(cfg.entity_bottom, 'close_cover', {});
     });
 
     this._els.slider.addEventListener('mousedown', (e) => this._onStart(e));
@@ -226,15 +248,14 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   _onStart(e) {
     e.preventDefault();
     const pct = this._pct(e);
-    const topP = this._pos(this._config.entity_top);
-    const botP = this._pos(this._config.entity_bottom);
+    const topSlider = this._toSlider('top', this._haPos(this._config.entity_top));
+    const botSlider = this._toSlider('bottom', this._haPos(this._config.entity_bottom));
 
-    // Pick nearest cursor
-    const dTop = Math.abs(pct - topP);
-    const dBot = Math.abs(pct - botP);
-    this._dragging = dTop < dBot ? 'top' : 'bottom';
+    // Pick nearest cursor (in slider space)
+    const dTop = Math.abs(pct - topSlider);
+    const dBot = Math.abs(pct - botSlider);
+    this._dragging = dTop <= dBot ? 'top' : 'bottom';
 
-    // Apply - NO crossing constraint, both thumbs are independent
     if (this._dragging === 'top') {
       this._pendingTop = pct;
     } else {
@@ -264,10 +285,10 @@ class HoneycombBlindsSliderCard extends HTMLElement {
 
   _onEnd() {
     if (this._dragging === 'top' && this._pendingTop != null) {
-      this._call(this._config.entity_top, 'set_cover_position', { position: Math.round(this._pendingTop) });
+      this._call(this._config.entity_top, 'set_cover_position', { position: Math.round(this._toHA('top', this._pendingTop)) });
     }
     if (this._dragging === 'bottom' && this._pendingBottom != null) {
-      this._call(this._config.entity_bottom, 'set_cover_position', { position: Math.round(this._pendingBottom) });
+      this._call(this._config.entity_bottom, 'set_cover_position', { position: Math.round(this._toHA('bottom', this._pendingBottom)) });
     }
     this._pendingTop = null;
     this._pendingBottom = null;
@@ -279,22 +300,40 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   }
 
   _updateSlider() {
-    const topP = this._pendingTop != null ? this._pendingTop : this._pos(this._config.entity_top);
-    const botP = this._pendingBottom != null ? this._pendingBottom : this._pos(this._config.entity_bottom);
+    // Slider positions (physical: left=top of window, right=bottom of window)
+    const topSlider = this._pendingTop != null ? this._pendingTop : this._toSlider('top', this._haPos(this._config.entity_top));
+    const botSlider = this._pendingBottom != null ? this._pendingBottom : this._toSlider('bottom', this._haPos(this._config.entity_bottom));
+
+    // HA positions for display
+    const topHA = this._pendingTop != null ? this._toHA('top', this._pendingTop) : this._haPos(this._config.entity_top);
+    const botHA = this._pendingBottom != null ? this._toHA('bottom', this._pendingBottom) : this._haPos(this._config.entity_bottom);
+
     const e = this._els;
     if (!e) return;
 
-    e.curTop.style.left = `calc(${topP}% - 5px)`;
-    e.curBot.style.left = `calc(${botP}% - 5px)`;
-    e.fillTop.style.width = `${100 - topP}%`;
-    e.fillBot.style.width = `${botP}%`;
-    e.lblTop.textContent = `${Math.round(topP)}%`;
-    e.lblBot.textContent = `${Math.round(botP)}%`;
+    // Position cursors on slider
+    e.curTop.style.left = `calc(${topSlider}% - 5px)`;
+    e.curBot.style.left = `calc(${botSlider}% - 5px)`;
+
+    // Fills: top fill from left edge to top cursor, bottom fill from bottom cursor to right edge
+    // The area BETWEEN the cursors is the open area (unfilled)
+    const leftPos = Math.min(topSlider, botSlider);
+    const rightPos = Math.max(topSlider, botSlider);
+    e.fillTop.style.width = `${leftPos}%`;
+    e.fillTop.style.left = '0';
+    e.fillTop.style.right = 'auto';
+    e.fillBot.style.width = `${100 - rightPos}%`;
+    e.fillBot.style.left = 'auto';
+    e.fillBot.style.right = '0';
+
+    // Labels show HA percentage
+    e.lblTop.textContent = `${Math.round(topHA)}%`;
+    e.lblBot.textContent = `${Math.round(botHA)}%`;
 
     if (this._config.show_state !== false) {
       const unavail = this._state(this._config.entity_top) === 'unavailable' ||
                       this._state(this._config.entity_bottom) === 'unavailable';
-      e.state.textContent = unavail ? 'Unavailable' : `Top ${Math.round(topP)}% · Bottom ${Math.round(botP)}%`;
+      e.state.textContent = unavail ? 'Unavailable' : `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
     }
   }
 
@@ -327,7 +366,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.1.1 `,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.2.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
