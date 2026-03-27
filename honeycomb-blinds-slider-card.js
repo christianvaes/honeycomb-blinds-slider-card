@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.7.0
+ * @version 1.9.0
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -13,8 +13,6 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     this._dragging = null;
     this._pendingTop = null;
     this._pendingBottom = null;
-    this._targetTop = null;
-    this._targetBot = null;
     this._onMove = this._onMove.bind(this);
     this._onEnd = this._onEnd.bind(this);
   }
@@ -256,21 +254,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     return Math.max(0, Math.min(100, (x / r.width) * 100));
   }
 
-  // Raw slider position for a motor (pending > target > HA value)
+  // Slider position for a motor: pending (while dragging) or live HA value
   _getRawSliderPos(which) {
     const pending = which === 'top' ? this._pendingTop : this._pendingBottom;
     if (pending != null) return pending;
-    const target = which === 'top' ? this._targetTop : this._targetBot;
     const eid = which === 'top' ? this._config.entity_top : this._config.entity_bottom;
-    const haSlider = this._toSlider(which, this._haPos(eid));
-    if (target != null) {
-      if (Math.abs(haSlider - target) < 2) {
-        if (which === 'top') this._targetTop = null; else this._targetBot = null;
-        return haSlider;
-      }
-      return target;
-    }
-    return haSlider;
+    return this._toSlider(which, this._haPos(eid));
   }
 
   // Display positions: ensures leftPos <= rightPos for rendering.
@@ -330,12 +319,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
 
-    // Clamp against the OTHER motor's raw position (not pending, not constrained)
-    const otherEid = this._dragging === 'top' ? this._config.entity_bottom : this._config.entity_top;
-    const otherWhich = this._dragging === 'top' ? 'bottom' : 'top';
-    const otherTarget = otherWhich === 'top' ? this._targetTop : this._targetBot;
-    const otherHA = this._toSlider(otherWhich, this._haPos(otherEid));
-    const otherPos = otherTarget != null ? otherTarget : otherHA;
+    // Clamp against the OTHER motor's current HA position
+    const otherPos = this._getRawSliderPos(this._dragging === 'top' ? 'bottom' : 'top');
 
     if (this._dragging === 'top') {
       this._pendingTop = Math.min(pct, otherPos);
@@ -347,11 +332,9 @@ class HoneycombBlindsSliderCard extends HTMLElement {
 
   _onEnd() {
     if (this._dragging === 'top' && this._pendingTop != null) {
-      this._targetTop = this._pendingTop;
       this._call(this._config.entity_top, 'set_cover_position', { position: Math.round(this._toHA('top', this._pendingTop)) });
     }
     if (this._dragging === 'bottom' && this._pendingBottom != null) {
-      this._targetBot = this._pendingBottom;
       this._call(this._config.entity_bottom, 'set_cover_position', { position: Math.round(this._toHA('bottom', this._pendingBottom)) });
     }
     this._hideTooltip();
@@ -505,7 +488,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.4`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.9.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
