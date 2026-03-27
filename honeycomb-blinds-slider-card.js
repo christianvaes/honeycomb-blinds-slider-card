@@ -3,7 +3,7 @@
  * Custom Home Assistant card for plisse/honeycomb blinds with dual motors.
  * Styled to match the native HA tile card with cover-position slider.
  *
- * @version 1.5.0
+ * @version 1.7.0
  */
 
 class HoneycombBlindsSliderCard extends HTMLElement {
@@ -109,7 +109,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         /* Features */
         .features { display: flex; flex-direction: column; padding: 0 12px 12px; gap: 12px; }
 
-        /* Buttons: native ha-control-button = 100px wide, 12px gap, flex: 1 to fill evenly */
+        /* Buttons */
         .btn-row { display: flex; height: 42px; gap: 12px; }
         .btn-row button {
           flex: 1 1 0; display: flex; align-items: center; justify-content: center;
@@ -127,6 +127,10 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         .btn-row button:disabled { opacity: 0.3; cursor: default; }
         .btn-row button:disabled:hover::before { opacity: 0.2; }
 
+        /* Slider wrapper: allows tooltip to overflow above */
+        .slider-wrap {
+          position: relative;
+        }
         /* Slider track */
         .slider {
           position: relative; width: 100%; height: 42px;
@@ -134,28 +138,28 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           touch-action: none; cursor: pointer;
           user-select: none; -webkit-user-select: none;
         }
-        /* Background: tile-color at 0.2 (same as native .slider-track-background) */
         .slider-bg {
           position: absolute; inset: 0;
           background: var(--tile-color); opacity: 0.2;
         }
-        /* Fill between cursors = fabric. Full tile-color, like the native track-bar */
+        /* Fill = fabric. Matches native track-bar border-radius */
         .fill {
           position: absolute; top: 0; bottom: 0;
           background: var(--tile-color);
           border-radius: 8px;
           pointer-events: none;
         }
-        /* Cursor handle: 4px wide, 21px tall, centered vertically, positioned via JS */
+        /* Cursor handle: matches native ::after on track-bar */
         .cur {
           position: absolute; top: 50%; transform: translateY(-50%);
           width: 4px; height: 21px; border-radius: 4px;
           background: rgb(255, 255, 255);
           pointer-events: none; z-index: 2;
         }
-        /* Tooltip: shown above slider while dragging, matches native HA tooltip */
+
+        /* Tooltip: sits OUTSIDE .slider (in .slider-wrap) so not clipped by overflow:hidden */
         .tooltip {
-          position: absolute; bottom: calc(100% + 4px);
+          position: absolute; bottom: 46px;
           background: var(--card-background-color, rgb(46, 48, 56));
           color: var(--primary-text-color, rgb(228, 228, 231));
           font-size: 14px; font-weight: 400; line-height: 1.6;
@@ -192,13 +196,15 @@ class HoneycombBlindsSliderCard extends HTMLElement {
               <button id="closeBtn"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
             </div>
             <div>
-              <div class="slider" id="slider">
-                <div class="slider-bg"></div>
-                <div class="fill" id="fill"></div>
-                <div class="cur" id="curTop"></div>
-                <div class="cur" id="curBot"></div>
+              <div class="slider-wrap">
                 <div class="tooltip" id="tipTop"></div>
                 <div class="tooltip" id="tipBot"></div>
+                <div class="slider" id="slider">
+                  <div class="slider-bg"></div>
+                  <div class="fill" id="fill"></div>
+                  <div class="cur" id="curTop"></div>
+                  <div class="cur" id="curBot"></div>
+                </div>
               </div>
               <div class="slider-labels">
                 <div class="slider-label"><span class="dot dot-top"></span>Top <span id="lblTop"></span></div>
@@ -248,7 +254,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     return Math.max(0, Math.min(100, (x / r.width) * 100));
   }
 
-  // Get raw slider position for a motor (may be crossed)
+  // Raw slider position for a motor (pending > target > HA value)
   _getRawSliderPos(which) {
     const pending = which === 'top' ? this._pendingTop : this._pendingBottom;
     if (pending != null) return pending;
@@ -265,27 +271,50 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     return haSlider;
   }
 
-  // Get constrained slider positions: top is ALWAYS <= bottom (no crossing)
-  _getConstrainedPositions() {
-    let topS = this._getRawSliderPos('top');
-    let botS = this._getRawSliderPos('bottom');
-    // Prevent crossing: if top > bottom, clamp them to meet
-    if (topS > botS) {
-      const mid = (topS + botS) / 2;
-      topS = mid;
-      botS = mid;
+  // Display positions: ensures leftPos <= rightPos for rendering.
+  // Returns which motor is on which side.
+  _getDisplayPositions() {
+    const rawTop = this._getRawSliderPos('top');
+    const rawBot = this._getRawSliderPos('bottom');
+    if (rawTop <= rawBot) {
+      return { leftPos: rawTop, rightPos: rawBot, leftMotor: 'top', rightMotor: 'bottom' };
+    } else {
+      // Crossed: swap so left <= right
+      return { leftPos: rawBot, rightPos: rawTop, leftMotor: 'bottom', rightMotor: 'top' };
     }
-    return { topS, botS };
   }
 
   _onStart(e) {
     e.preventDefault();
     const pct = this._pct(e);
-    const { topS, botS } = this._getConstrainedPositions();
-    this._dragging = Math.abs(pct - topS) <= Math.abs(pct - botS) ? 'top' : 'bottom';
-    // Clamp so top stays left of (or equal to) bottom
-    if (this._dragging === 'top') this._pendingTop = Math.min(pct, botS);
-    else this._pendingBottom = Math.max(pct, topS);
+    const rawTop = this._getRawSliderPos('top');
+    const rawBot = this._getRawSliderPos('bottom');
+    const { leftPos, rightPos, leftMotor, rightMotor } = this._getDisplayPositions();
+
+    // Smart thumb selection
+    if (Math.abs(leftPos - rightPos) < 3) {
+      // Both at same spot: pick based on which side has room to move
+      // At left edge → grab rightMotor (to move it right). At right edge → grab leftMotor (to move it left).
+      if (leftPos < 50) {
+        this._dragging = rightMotor;
+      } else {
+        this._dragging = leftMotor;
+      }
+    } else {
+      // Normal: pick closest to click position
+      const distLeft = Math.abs(pct - leftPos);
+      const distRight = Math.abs(pct - rightPos);
+      this._dragging = distLeft <= distRight ? leftMotor : rightMotor;
+    }
+
+    // Clamp: the dragged motor cannot cross the other motor's raw position
+    const otherRaw = this._dragging === 'top' ? rawBot : rawTop;
+    if (this._dragging === 'top') {
+      this._pendingTop = Math.min(pct, otherRaw);
+    } else {
+      this._pendingBottom = Math.max(pct, otherRaw);
+    }
+
     this._showTooltip();
     this._updateSlider();
     document.addEventListener('mousemove', this._onMove);
@@ -298,14 +327,18 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     if (!this._dragging) return;
     if (e.cancelable) e.preventDefault();
     const pct = this._pct(e);
-    // Get constrained position of the OTHER thumb
-    const { topS, botS } = this._getConstrainedPositions();
+
+    // Clamp against the OTHER motor's raw position (not pending, not constrained)
+    const otherEid = this._dragging === 'top' ? this._config.entity_bottom : this._config.entity_top;
+    const otherWhich = this._dragging === 'top' ? 'bottom' : 'top';
+    const otherTarget = otherWhich === 'top' ? this._targetTop : this._targetBot;
+    const otherHA = this._toSlider(otherWhich, this._haPos(otherEid));
+    const otherPos = otherTarget != null ? otherTarget : otherHA;
+
     if (this._dragging === 'top') {
-      // Top cannot go past bottom's constrained position
-      this._pendingTop = Math.min(pct, botS);
+      this._pendingTop = Math.min(pct, otherPos);
     } else {
-      // Bottom cannot go past top's constrained position
-      this._pendingBottom = Math.max(pct, topS);
+      this._pendingBottom = Math.max(pct, otherPos);
     }
     this._updateSlider();
   }
@@ -343,38 +376,45 @@ class HoneycombBlindsSliderCard extends HTMLElement {
   _updateSlider() {
     const e = this._els;
     if (!e) return;
-    // Always use constrained positions so cursors never cross
-    const { topS, botS } = this._getConstrainedPositions();
-    const topHA = this._toHA('top', topS);
-    const botHA = this._toHA('bottom', botS);
+    const { leftPos, rightPos } = this._getDisplayPositions();
+    const rawTop = this._getRawSliderPos('top');
+    const rawBot = this._getRawSliderPos('bottom');
+    const topHA = this._toHA('top', rawTop);
+    const botHA = this._toHA('bottom', rawBot);
 
-    // Fill = fabric area between the two cursor positions
-    e.fill.style.left = `${topS}%`;
-    e.fill.style.width = `${botS - topS}%`;
-
-    // Position cursors directly in the slider track (not inside fill)
-    // to prevent visual crossing when fill is narrow.
-    // Native HA places the cursor 5.25px inward from the fill edge.
-    // We compute pixel positions and ensure they never visually cross.
     const sliderW = e.slider.offsetWidth || 1;
     const INSET = 5.25;
     const CUR_W = 4;
-    let topCurPx = (topS / 100) * sliderW + INSET;         // inset from left edge of fill
-    let botCurPx = (botS / 100) * sliderW - INSET - CUR_W;  // inset from right edge of fill
-    // Prevent visual crossing: ensure top cursor is left of (or equal to) bottom cursor
-    if (topCurPx > botCurPx) {
-      const mid = (topCurPx + botCurPx) / 2;
-      topCurPx = mid;
-      botCurPx = mid;
-    }
-    e.curTop.style.left = `${topCurPx}px`;
-    e.curBot.style.left = `${botCurPx}px`;
 
-    // Tooltips: position centered above each cursor, show percentage
+    // Fill: from leftPos to rightPos, with minimum width for cursor visibility
+    const minFillPx = (INSET + CUR_W + INSET);
+    const fillLeftPx = (leftPos / 100) * sliderW;
+    const fillRightPx = (rightPos / 100) * sliderW;
+    let fillW = fillRightPx - fillLeftPx;
+    let fillL = fillLeftPx;
+
+    if (fillW < minFillPx) {
+      // Expand fill symmetrically to minimum width, clamped to slider bounds
+      const center = (fillLeftPx + fillRightPx) / 2;
+      fillL = Math.max(0, center - minFillPx / 2);
+      if (fillL + minFillPx > sliderW) fillL = sliderW - minFillPx;
+      fillW = minFillPx;
+    }
+
+    e.fill.style.left = `${fillL}px`;
+    e.fill.style.width = `${fillW}px`;
+
+    // Position cursors with inset from fill edges (matches native 5.25px)
+    const leftCurPx = fillL + INSET;
+    const rightCurPx = fillL + fillW - INSET - CUR_W;
+    e.curTop.style.left = `${leftCurPx}px`;
+    e.curBot.style.left = `${rightCurPx}px`;
+
+    // Tooltips: positioned in .slider-wrap (outside overflow:hidden)
     e.tipTop.textContent = `${Math.round(topHA)}%`;
     e.tipBot.textContent = `${Math.round(botHA)}%`;
-    e.tipTop.style.left = `${topCurPx + CUR_W / 2}px`;
-    e.tipBot.style.left = `${botCurPx + CUR_W / 2}px`;
+    e.tipTop.style.left = `${leftCurPx + CUR_W / 2}px`;
+    e.tipBot.style.left = `${rightCurPx + CUR_W / 2}px`;
 
     // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
@@ -401,7 +441,6 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const cfg = this._config;
     const e = this._els;
     const unavail = this._state(cfg.entity_top) === 'unavailable' || this._state(cfg.entity_bottom) === 'unavailable';
-    // Use configured icon, entity icon, or derive from device_class
     const topState = this._hass.states[cfg.entity_top];
     const deviceClass = topState?.attributes?.device_class || '';
     const entityIcon = topState?.attributes?.icon;
@@ -434,7 +473,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.6.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.7.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
