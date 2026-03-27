@@ -388,35 +388,43 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const INSET = 5.25;
     const CUR_W = 4;
 
-    // Fill: from leftPos to rightPos
-    // When both cursors overlap, use the same minimum width as native HA (single cursor look)
-    const MIN_FILL = INSET + CUR_W + INSET + 16; // ~30px - enough for border-radius + visible purple
+    // Native HA approach: track-bar is always 100% wide, shifted via transform.
+    // At value=0 the visible portion = 2*handle-margin + handle-size = 14.5px.
+    // We replicate this: fill extends from leftPos to rightPos, with a minimum
+    // visible width of 14.5px (same as native). No border-radius on the clipped
+    // side when at the edge, so it looks identical to native.
+    const MIN_VIS = 2 * INSET + CUR_W; // 14.5px - exact native minimum
     const fillLeftPx = (leftPos / 100) * sliderW;
     const fillRightPx = (rightPos / 100) * sliderW;
-    let fillW = fillRightPx - fillLeftPx;
     let fillL = fillLeftPx;
-    const collapsed = fillW < MIN_FILL;
+    let fillR = fillRightPx;
+    const collapsed = (fillR - fillL) < MIN_VIS;
 
     if (collapsed) {
-      // Expand fill around the midpoint, clamped to slider bounds
-      const center = (fillLeftPx + fillRightPx) / 2;
-      fillL = Math.max(0, center - MIN_FILL / 2);
-      if (fillL + MIN_FILL > sliderW) fillL = sliderW - MIN_FILL;
-      fillW = MIN_FILL;
+      // Both at same spot: expand to minimum, anchored to position
+      const center = (fillL + fillR) / 2;
+      fillL = Math.max(0, center - MIN_VIS / 2);
+      fillR = fillL + MIN_VIS;
+      if (fillR > sliderW) { fillR = sliderW; fillL = fillR - MIN_VIS; }
     }
 
+    const fillW = fillR - fillL;
     e.fill.style.left = `${fillL}px`;
     e.fill.style.width = `${fillW}px`;
+    // Remove border-radius on edges touching the slider edge (native behavior)
+    const rL = fillL < 1 ? '0' : '8px';
+    const rR = (fillL + fillW) > (sliderW - 1) ? '0' : '8px';
+    e.fill.style.borderRadius = `${rL} ${rR} ${rR} ${rL}`;
 
-    // When collapsed (both at same spot), show single cursor in center of fill (like native)
-    // When expanded, show two cursors with inset from edges
+    // Cursors with native 5.25px inset
     if (collapsed) {
-      const centerCurPx = fillL + (fillW - CUR_W) / 2;
-      e.curTop.style.left = `${centerCurPx}px`;
-      e.curBot.style.left = `${centerCurPx}px`;
+      // Single cursor centered in the minimum fill (like native at 0%/100%)
+      const curPx = fillL + INSET;
+      e.curTop.style.left = `${curPx}px`;
+      e.curBot.style.left = `${curPx}px`;
     } else {
       e.curTop.style.left = `${fillL + INSET}px`;
-      e.curBot.style.left = `${fillL + fillW - INSET - CUR_W}px`;
+      e.curBot.style.left = `${fillR - INSET - CUR_W}px`;
     }
 
     // Tooltips: positioned in .slider-wrap (outside overflow:hidden)
@@ -497,7 +505,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.3`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.4`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
