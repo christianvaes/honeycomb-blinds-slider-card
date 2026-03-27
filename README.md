@@ -68,8 +68,12 @@ A honeycomb/plisse blind with dual motors has independent top and bottom rails. 
 - Drag the **bottom thumb** (orange) to control where the bottom of the fabric sits
 - The colored zone between the thumbs represents the open/visible area
 
-## Screenshot
+## Screenshots
 
+### Dashboard
+<img src="screenshots/dashboard.png" alt="Dashboard" width="500">
+
+### Config Editor
 <img src="screenshots/config-editor.png" alt="Config Editor" width="500">
 
 ## License
