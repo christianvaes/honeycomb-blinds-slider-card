@@ -388,35 +388,44 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     const INSET = 5.25;
     const CUR_W = 4;
 
-    // Fill: from leftPos to rightPos, with minimum width for cursor visibility
-    const minFillPx = (INSET + CUR_W + INSET);
+    // Fill: from leftPos to rightPos
+    // When both cursors overlap, use the same minimum width as native HA (single cursor look)
+    const MIN_FILL = INSET + CUR_W + INSET + 16; // ~30px - enough for border-radius + visible purple
     const fillLeftPx = (leftPos / 100) * sliderW;
     const fillRightPx = (rightPos / 100) * sliderW;
     let fillW = fillRightPx - fillLeftPx;
     let fillL = fillLeftPx;
+    const collapsed = fillW < MIN_FILL;
 
-    if (fillW < minFillPx) {
-      // Expand fill symmetrically to minimum width, clamped to slider bounds
+    if (collapsed) {
+      // Expand fill around the midpoint, clamped to slider bounds
       const center = (fillLeftPx + fillRightPx) / 2;
-      fillL = Math.max(0, center - minFillPx / 2);
-      if (fillL + minFillPx > sliderW) fillL = sliderW - minFillPx;
-      fillW = minFillPx;
+      fillL = Math.max(0, center - MIN_FILL / 2);
+      if (fillL + MIN_FILL > sliderW) fillL = sliderW - MIN_FILL;
+      fillW = MIN_FILL;
     }
 
     e.fill.style.left = `${fillL}px`;
     e.fill.style.width = `${fillW}px`;
 
-    // Position cursors with inset from fill edges (matches native 5.25px)
-    const leftCurPx = fillL + INSET;
-    const rightCurPx = fillL + fillW - INSET - CUR_W;
-    e.curTop.style.left = `${leftCurPx}px`;
-    e.curBot.style.left = `${rightCurPx}px`;
+    // When collapsed (both at same spot), show single cursor in center of fill (like native)
+    // When expanded, show two cursors with inset from edges
+    if (collapsed) {
+      const centerCurPx = fillL + (fillW - CUR_W) / 2;
+      e.curTop.style.left = `${centerCurPx}px`;
+      e.curBot.style.left = `${centerCurPx}px`;
+    } else {
+      e.curTop.style.left = `${fillL + INSET}px`;
+      e.curBot.style.left = `${fillL + fillW - INSET - CUR_W}px`;
+    }
 
     // Tooltips: positioned in .slider-wrap (outside overflow:hidden)
+    const topCurCenter = parseFloat(e.curTop.style.left) + CUR_W / 2;
+    const botCurCenter = parseFloat(e.curBot.style.left) + CUR_W / 2;
     e.tipTop.textContent = `${Math.round(topHA)}%`;
     e.tipBot.textContent = `${Math.round(botHA)}%`;
-    e.tipTop.style.left = `${leftCurPx + CUR_W / 2}px`;
-    e.tipBot.style.left = `${rightCurPx + CUR_W / 2}px`;
+    e.tipTop.style.left = `${topCurCenter}px`;
+    e.tipBot.style.left = `${botCurCenter}px`;
 
     // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
@@ -488,7 +497,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.2`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.3`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
