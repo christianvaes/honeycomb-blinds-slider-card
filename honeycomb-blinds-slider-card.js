@@ -226,14 +226,16 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     };
 
     const cfg = this._config;
+    // Open = fabric gathered at top: top motor closed (0%), bottom motor open (100%)
     this._els.openBtn.addEventListener('click', () => {
-      this._call(cfg.entity_top, 'open_cover', {});
+      this._call(cfg.entity_top, 'close_cover', {});
       this._call(cfg.entity_bottom, 'open_cover', {});
     });
     this._els.stopBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'stop_cover', {});
       this._call(cfg.entity_bottom, 'stop_cover', {});
     });
+    // Close = fabric covers window: both motors closed (0%)
     this._els.closeBtn.addEventListener('click', () => {
       this._call(cfg.entity_top, 'close_cover', {});
       this._call(cfg.entity_bottom, 'close_cover', {});
@@ -427,8 +429,10 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       if (ts === 'unavailable' || bs === 'unavailable') {
         e.state.textContent = this._hass.localize?.('state.default.unavailable') || 'Unavailable';
       } else if (ts === 'closed' && bs === 'closed') {
-        e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.closed') || 'Closed';
-      } else if (ts === 'open' && bs === 'open' && topHA >= 99 && botHA >= 99) {
+        // Both motors closed = fabric covers entire window
+        e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.closed') || 'Gesloten';
+      } else if (ts === 'closed' && bs === 'open' && botHA >= 99) {
+        // Top closed + bottom fully open = fabric gathered at top = open
         e.state.textContent = this._hass.localize?.('component.cover.entity_component._.state.open') || 'Open';
       } else {
         e.state.textContent = `Top ${Math.round(topHA)}% · Bottom ${Math.round(botHA)}%`;
@@ -456,14 +460,16 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     e.state.style.display = cfg.show_state !== false ? '' : 'none';
     const topSt = this._hass.states[cfg.entity_top]?.state;
     const botSt = this._hass.states[cfg.entity_bottom]?.state;
-    // Disable buttons based on HA entity states (same as native tile card)
-    const bothOpen = topSt === 'open' && botSt === 'open';
-    const bothClosed = topSt === 'closed' && botSt === 'closed';
+    // Honeycomb blind states:
+    // - "Open" (fabric gathered at top) = top closed + bottom open
+    // - "Closed" (fabric covers window) = both closed
+    const isOpen = topSt === 'closed' && botSt === 'open';
+    const isClosed = topSt === 'closed' && botSt === 'closed';
     const isMoving = topSt === 'opening' || topSt === 'closing'
                   || botSt === 'opening' || botSt === 'closing';
-    e.openBtn.disabled = unavail || bothOpen;
+    e.openBtn.disabled = unavail || isOpen;
     e.stopBtn.disabled = unavail || !isMoving;
-    e.closeBtn.disabled = unavail || bothClosed;
+    e.closeBtn.disabled = unavail || isClosed;
     this._updateSlider();
   }
 }
@@ -480,7 +486,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.7.2`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
