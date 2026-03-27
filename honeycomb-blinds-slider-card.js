@@ -454,9 +454,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     e.iconWrap.classList.toggle('off', unavail);
     e.name.textContent = cfg.name || this._name(cfg.entity_top).replace(/\s*(top|boven|upper|motor|bovenkant).*$/i, '').trim() || 'Honeycomb Blind';
     e.state.style.display = cfg.show_state !== false ? '' : 'none';
-    e.openBtn.disabled = unavail;
-    e.stopBtn.disabled = unavail;
-    e.closeBtn.disabled = unavail;
+    const topSt = this._hass.states[cfg.entity_top];
+    const botSt = this._hass.states[cfg.entity_bottom];
+    const topPos = this._haPos(cfg.entity_top);
+    const botPos = this._haPos(cfg.entity_bottom);
+    const bothFullyOpen = topPos >= 100 && botPos >= 100;
+    const bothFullyClosed = topPos <= 0 && botPos <= 0;
+    const isMoving = topSt?.state === 'opening' || topSt?.state === 'closing'
+                  || botSt?.state === 'opening' || botSt?.state === 'closing';
+    e.openBtn.disabled = unavail || bothFullyOpen;
+    e.stopBtn.disabled = unavail || !isMoving;
+    e.closeBtn.disabled = unavail || bothFullyClosed;
     this._updateSlider();
   }
 }
@@ -473,7 +481,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.7.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.7.1`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
