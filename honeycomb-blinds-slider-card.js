@@ -153,6 +153,18 @@ class HoneycombBlindsSliderCard extends HTMLElement {
           background: rgb(255, 255, 255);
           pointer-events: none; z-index: 2;
         }
+        /* Tooltip: shown above slider while dragging, matches native HA tooltip */
+        .tooltip {
+          position: absolute; bottom: calc(100% + 4px);
+          background: var(--card-background-color, rgb(46, 48, 56));
+          color: var(--primary-text-color, rgb(228, 228, 231));
+          font-size: 14px; font-weight: 400; line-height: 1.6;
+          padding: 2.8px 5.6px; border-radius: 12px;
+          white-space: nowrap; pointer-events: none;
+          opacity: 0; transition: opacity 0.18s ease-in-out;
+          transform: translateX(-50%); z-index: 10;
+        }
+        .tooltip.visible { opacity: 1; }
 
         /* Labels */
         .slider-labels { display: flex; justify-content: space-between; padding: 2px 2px 0; }
@@ -185,6 +197,8 @@ class HoneycombBlindsSliderCard extends HTMLElement {
                 <div class="fill" id="fill"></div>
                 <div class="cur" id="curTop"></div>
                 <div class="cur" id="curBot"></div>
+                <div class="tooltip" id="tipTop"></div>
+                <div class="tooltip" id="tipBot"></div>
               </div>
               <div class="slider-labels">
                 <div class="slider-label"><span class="dot dot-top"></span>Top <span id="lblTop"></span></div>
@@ -202,6 +216,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       openBtn: $('openBtn'), stopBtn: $('stopBtn'), closeBtn: $('closeBtn'),
       slider: $('slider'), fill: $('fill'),
       curBot: $('curBot'), curTop: $('curTop'), lblBot: $('lblBot'), lblTop: $('lblTop'),
+      tipTop: $('tipTop'), tipBot: $('tipBot'),
     };
 
     const cfg = this._config;
@@ -271,6 +286,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     // Clamp so top stays left of (or equal to) bottom
     if (this._dragging === 'top') this._pendingTop = Math.min(pct, botS);
     else this._pendingBottom = Math.max(pct, topS);
+    this._showTooltip();
     this._updateSlider();
     document.addEventListener('mousemove', this._onMove);
     document.addEventListener('mouseup', this._onEnd);
@@ -303,6 +319,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
       this._targetBot = this._pendingBottom;
       this._call(this._config.entity_bottom, 'set_cover_position', { position: Math.round(this._toHA('bottom', this._pendingBottom)) });
     }
+    this._hideTooltip();
     this._pendingTop = null;
     this._pendingBottom = null;
     this._dragging = null;
@@ -310,6 +327,17 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     document.removeEventListener('mouseup', this._onEnd);
     document.removeEventListener('touchmove', this._onMove);
     document.removeEventListener('touchend', this._onEnd);
+  }
+
+  _showTooltip() {
+    if (!this._els) return;
+    const tip = this._dragging === 'top' ? this._els.tipTop : this._els.tipBot;
+    tip?.classList.add('visible');
+  }
+
+  _hideTooltip() {
+    this._els?.tipTop?.classList.remove('visible');
+    this._els?.tipBot?.classList.remove('visible');
   }
 
   _updateSlider() {
@@ -341,6 +369,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     }
     e.curTop.style.left = `${topCurPx}px`;
     e.curBot.style.left = `${botCurPx}px`;
+
+    // Tooltips: position centered above each cursor, show percentage
+    e.tipTop.textContent = `${Math.round(topHA)}%`;
+    e.tipBot.textContent = `${Math.round(botHA)}%`;
+    e.tipTop.style.left = `${topCurPx + CUR_W / 2}px`;
+    e.tipBot.style.left = `${botCurPx + CUR_W / 2}px`;
 
     // Labels
     e.lblTop.textContent = `${Math.round(topHA)}%`;
@@ -400,7 +434,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.5.2`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.6.0`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
