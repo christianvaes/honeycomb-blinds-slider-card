@@ -464,12 +464,12 @@ class HoneycombBlindsSliderCard extends HTMLElement {
     // - "Open" (fabric gathered at top) = top closed + bottom open
     // - "Closed" (fabric covers window) = both closed
     const isOpen = topSt === 'closed' && botSt === 'open';
-    const isClosed = topSt === 'closed' && botSt === 'closed';
+    const allClosed = topSt === 'closed' && botSt === 'closed';
     const isMoving = topSt === 'opening' || topSt === 'closing'
                   || botSt === 'opening' || botSt === 'closing';
     e.openBtn.disabled = unavail || isOpen;
     e.stopBtn.disabled = unavail || !isMoving;
-    e.closeBtn.disabled = unavail || isClosed;
+    e.closeBtn.disabled = unavail || allClosed;
     this._updateSlider();
   }
 }
@@ -486,7 +486,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.0`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.8.1`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
