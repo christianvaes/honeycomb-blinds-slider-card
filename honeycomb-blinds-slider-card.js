@@ -143,6 +143,7 @@ class HoneycombBlindsSliderCard extends HTMLElement {
         .fill {
           position: absolute; top: 0; bottom: 0;
           background: var(--tile-color);
+          border-radius: 8px;
           pointer-events: none;
         }
         /* Cursor handle: 4px wide, 21px tall, centered vertically, positioned via JS */
@@ -399,7 +400,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c HONEYCOMB-BLINDS-SLIDER %c v1.5.1`,
+  `%c HONEYCOMB-BLINDS-SLIDER %c v1.5.2`,
   'color: white; background: #7b61ff; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
   'color: #7b61ff; background: white; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0; border: 1px solid #7b61ff;'
 );
